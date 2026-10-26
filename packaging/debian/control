@@ -1,0 +1,12 @@
+Package: linux-epub-reader
+Version: 0.12.1-1
+Section: text
+Priority: optional
+Architecture: all
+Depends: python3, python3-tk
+Maintainer: Linux EPUB Reader contributors
+Description: Local-first dark-mode EPUB reader
+ A text-oriented EPUB reader for Linux with a left-hand table of contents,
+ bookmarks, search, reading progress and Linux Mint-green accents.
+ .
+ Adobe DRM is detected but not natively implemented in this application.
