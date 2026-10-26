@@ -53,7 +53,7 @@ python3 -m unittest discover -s tests -v
 On Debian or Linux Mint, install the packaging tools (`dpkg-deb` is normally available with `dpkg`), then run:
 
 ```bash
-./scripts/build-deb.sh
+bash scripts/build-deb.sh
 ```
 
 The package is written to `dist/linux-epub-reader_0.12.1-1_all.deb`. Install it by opening the `.deb` in the desktop installer, or with:
