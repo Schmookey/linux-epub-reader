@@ -9,4 +9,4 @@ check:
 	$(MAKE) test
 
 build-deb:
-	./scripts/build-deb.sh
+	bash scripts/build-deb.sh
