@@ -853,7 +853,8 @@ class Reader(tk.Tk):
         try:
             font = tkfont.Font(root=self, font=("Sans", 10))
             widths = [font.measure("CONTENTS")]
-            indent_width = max(12, int(self.toc_tree.cget("indent")))
+            # ttk.Treeview has no public "indent" option; estimate its disclosure indentation.
+            indent_width = 18
 
             def measure_items(parent="", depth=0):
                 for item in self.toc_tree.get_children(parent):
@@ -865,7 +866,7 @@ class Reader(tk.Tk):
             available = max(260, int(self.panes.winfo_width()))
             target = sidebar_width_for_labels(
                 widths, available_width=available,
-                minimum_width=250, reading_min_width=520, padding=72,
+                minimum_width=250, reading_min_width=460, padding=72,
             )
             self.toc_tree.column("#0", width=max(165, target - 72), minwidth=160, stretch=True)
             if target != self.sidebar_target_width:
