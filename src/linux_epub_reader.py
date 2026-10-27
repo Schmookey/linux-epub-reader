@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.5 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.6 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.5"
+APP_VERSION = "0.13.6"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -1078,12 +1078,12 @@ class Reader(tk.Tk):
     def toggle_fullscreen(self):
         if self.is_fullscreen: self.exit_fullscreen(); return
         self.is_fullscreen = True
+        # Reset the grid column minimum as well as hiding the contents widget.
+        # grid_remove() alone preserves the old column minimum, leaving a blank
+        # sidebar-sized strip in full-screen when the contents panel was open.
+        self._ensure_toc_left()
         self.toolbar.pack_forget()
         self.panes.pack_configure(padx=0, pady=0)
-        self.left.grid_remove()
-        self.sidebar_toggle.grid_remove()
-        self.sidebar_reopen_toggle.place_forget()
-        self.reader_body.pack_configure(padx=0)
         self.heading.pack_forget()
         self.right.configure(padding=0)
         self.text.configure(padx=28, pady=24)
