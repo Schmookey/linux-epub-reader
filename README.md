@@ -22,7 +22,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - ACSM files are download/fulfilment instructions, not book contents. This application does not fulfil them or contact a publisher.
 - Readium LCP support is a local hand-off to an already-installed Thorium Reader when its command is available; it is not native decryption in this app.
 - Chapter page counts are estimates unless a publication provides page markers.
-- Automated and virtual-desktop checks are included, but please test on a real Linux Mint desktop before relying on the reader for important books.
+- Automated tests are included, and a three-chapter virtual-desktop smoke test passed during this update. That smoke test is not yet part of the committed automated suite; please test on a real Linux Mint desktop before relying on the reader for important books.
 
 ## Requirements
 
