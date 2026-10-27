@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.3 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.4 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.3"
+APP_VERSION = "0.13.4"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -427,7 +427,7 @@ class EPUBBook:
 class Reader(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_NAME)
+        self.title(f"{APP_NAME} v{APP_VERSION}")
         self.geometry("1180x780")
         self.minsize(800, 520)
         self.configure(background=APP_BG)
@@ -558,6 +558,9 @@ class Reader(tk.Tk):
             command=self._set_fullscreen_hint_from_menu,
         )
         menubar.add_cascade(label="View", menu=view_menu)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="About Linux EPUB Reader", command=self.show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menubar)
 
         # Use a fixed grid rather than a draggable Panedwindow. This keeps the
@@ -661,6 +664,18 @@ class Reader(tk.Tk):
         self.progress = ttk.Progressbar(self.bottom, style="LinuxEPUB.Horizontal.TProgressbar", orient=tk.HORIZONTAL, mode="determinate", maximum=100, length=240)
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
         self.set_text("Welcome to Linux EPUB Reader\n\nOpen an EPUB to begin. Chapters flow continuously in one reading pane, and the green progress bar reports your position within the current chapter from 0% to 100%. Use the contents panel to jump to a chapter, or the Mint-green arrow on the panel edge to hide or restore it. Press F11 for distraction-free full-screen reading. Chapter page counts are estimates unless the publication supplies page markers.\n\nReading defaults: Atkinson Hyperlegible 11 pt, soft-white text on black, approximately 1.5× line spacing, and a medium-width reading column.")
+
+    def show_about(self):
+        """Show the running application version so installed builds are easy to verify."""
+        messagebox.showinfo(
+            f"About {APP_NAME}",
+            f"{APP_NAME} v{APP_VERSION}\\n\\n"
+            "Offline-first EPUB reader with a continuous reading pane, chapter progress, "
+            "a collapsible contents panel and Mint-green full-screen controls.\\n\\n"
+            "Adobe DRM is not supported. Protected files are never sent to another application "
+            "or opened online.",
+            parent=self,
+        )
 
     def _focus_reading_text(self, _event=None):
         """Allow the read-only reading view to receive Up/Down keyboard scrolling."""
@@ -966,7 +981,7 @@ class Reader(tk.Tk):
         self.index = max(0, min(len(book.chapters) - 1, int(st.get("chapter", 0))))
         self.rendered_book_key = None
         self.chapter_marks = []
-        self.title(f"{book.title} — {APP_NAME}")
+        self.title(f"{book.title} — {APP_NAME} v{APP_VERSION}")
         self.book_label.configure(text=book.title)
         self._populate_toc()
         self._render_book_text()
