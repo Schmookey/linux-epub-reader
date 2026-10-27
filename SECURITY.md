@@ -6,8 +6,8 @@ Please do not publish details of a suspected vulnerability in an ordinary public
 
 ## Sensitive data
 
-Never submit book files, Adobe account credentials, DRM keys, `.acsm` licences, local reading-state files or personal information in public bug reports.
+Never submit book files, Adobe account credentials, DRM keys, .acsm licences, local reading-state files or personal information in public bug reports.
 
 ## Security boundaries
 
-The reader does not intentionally access the network or fetch book content. A hand-off to separately installed external reader software is outside this process's security and network boundary. Do not describe external DRM integrations as offline-safe without separately verifying them.
+Linux EPUB Reader does not intentionally access the network, fetch book content, fulfil ACSM files or launch external applications to open protected/unsupported books. DRM-protected and unsupported files display a local explanatory notice and the app stops. Third-party desktop actions initiated independently by the user are outside the app's control.
