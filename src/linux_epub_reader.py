@@ -199,7 +199,9 @@ def chapter_progress_fraction(position_units, content_units, visible_units):
     if content == 0:
         return 0.0
     if content <= visible:
-        return 1.0
+        # Short chapters may fit on one screen, but must still start at 0%.
+        # Their progress is based on how far the viewport has crossed the chapter.
+        return max(0.0, min(1.0, position / max(1, content)))
     scrollable = max(1, content - visible)
     return max(0.0, min(1.0, position / scrollable))
 
