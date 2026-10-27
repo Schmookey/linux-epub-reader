@@ -46,7 +46,7 @@ jobs:
       - name: Install Flatpak build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11
+          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 python3-tk
 
       - name: Add Flathub remote and install the build runtime
         run: |
@@ -77,8 +77,8 @@ jobs:
       - name: Install the bundle and smoke-test Tkinter in the sandbox
         run: |
           flatpak install --user --noninteractive "$BUNDLE"
-          dbus-run-session -- xvfb-run -a flatpak run --user --command=python3 "$APP_ID" -c 'import tkinter, _tkinter; root = tkinter.Tk(); root.withdraw(); root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
-          flatpak run --user --command=python3 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
+          dbus-run-session -- xvfb-run -a flatpak run --user --command=python3.13 "$APP_ID" -c 'import tkinter, _tkinter; root = tkinter.Tk(); root.withdraw(); root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
+          flatpak run --user --command=python3.13 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
 
       - name: Save bundle as a workflow artifact
         uses: actions/upload-artifact@v4

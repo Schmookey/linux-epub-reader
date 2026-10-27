@@ -17,7 +17,7 @@ Replace `VERSION` with the version shown on the release page. To remove it:
 flatpak uninstall --user io.github.schmookey.LinuxEpubReader
 ```
 
-The bundle contains the app and its Tkinter/Tcl/Tk components, but **not** the full Freedesktop runtime. If that runtime is missing, Flatpak downloads it from Flathub during installation, so the first installation may need internet access. Once installed, the reader itself has no network permission.
+The bundle contains the app, a matching Python 3.13 interpreter with Tkinter, and Tcl/Tk components, but **not** the full Freedesktop runtime. If that runtime is missing, Flatpak downloads it from Flathub during installation, so the first installation may need internet access. Once installed, the reader itself has no network permission.
 
 ## Sandbox and privacy
 
