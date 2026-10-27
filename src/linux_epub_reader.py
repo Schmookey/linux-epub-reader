@@ -598,7 +598,7 @@ class Reader(tk.Tk):
         self.text.configure(yscrollcommand=self._on_scroll)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.reading_area.bind("<Configure>", self._size_reading_column)
-        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
+        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
         self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
                                 spacing1=12, spacing3=10)
         self.text.bind("<KeyRelease>", lambda _e: self._schedule_progress_save())
