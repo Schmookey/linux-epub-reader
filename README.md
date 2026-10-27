@@ -11,7 +11,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Left-hand nested contents with current-chapter highlighting and estimated page counts.
 - The sidebar width is calculated from the widest chapter/page label, with a cap based on available window width so the reading area remains usable. A Mint-green arrow on the sidebar's right edge opens/closes it; no dragging of a divider is required.
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
-- Full-screen reading (F11; Esc to exit), mouse-wheel and Up/Down keyboard scrolling.
+- Full-screen reading (F11; Esc to exit), with an optional floating Mint-green F11 exit hint and a saved 'Don't show this again' preference. The hint can be restored from the View menu.
 - Book metadata, search, bookmarks and saved reading positions.
 - Detection of Adobe ADEPT and Readium LCP protected files without attempting to remove protection.
 
@@ -47,9 +47,9 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
     bash scripts/build-deb.sh
 
-The output is dist/linux-epub-reader_0.13.2-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.3-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.2-1_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.3-1_all.deb
 
 ## Local data and offline behaviour
 
