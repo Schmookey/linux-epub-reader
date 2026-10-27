@@ -47,6 +47,34 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(reader.chapter_progress_fraction(0, 0, 20), 0.0)
 
 
+
+class SidebarWidthTests(unittest.TestCase):
+    def test_width_fits_longest_label_when_space_is_available(self):
+        self.assertEqual(reader.sidebar_width_for_labels(
+            [80, 330, 240], available_width=1400,
+            minimum_width=250, reading_min_width=520, padding=72,
+        ), 402)
+
+    def test_width_is_capped_to_keep_reading_area_visible(self):
+        self.assertEqual(reader.sidebar_width_for_labels(
+            [1000], available_width=1000,
+            minimum_width=250, reading_min_width=520, padding=72,
+        ), 480)
+
+    def test_width_keeps_a_minimum_for_empty_contents(self):
+        self.assertEqual(reader.sidebar_width_for_labels(
+            [], available_width=1200,
+            minimum_width=250, reading_min_width=520, padding=72,
+        ), 250)
+
+    def test_width_never_grows_without_respect_to_available_space(self):
+        result = reader.sidebar_width_for_labels(
+            [4000], available_width=900,
+            minimum_width=250, reading_min_width=520, padding=72,
+        )
+        self.assertEqual(result, 380)
+
+
 class DrmNoticeTests(unittest.TestCase):
     def test_adobe_drm_notice_does_not_offer_an_external_reader(self):
         title, message = reader.drm_notice_for("/books/protected.epub", "Adobe DRM-protected EPUB")
@@ -77,7 +105,7 @@ class DrmNoticeTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.1")
+        self.assertEqual(reader.APP_VERSION, "0.13.2")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
