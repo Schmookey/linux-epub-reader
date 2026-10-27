@@ -1,7 +1,8 @@
-"""Regression tests for Linux EPUB Reader's non-GUI helpers and EPUB parser."""
+"""Regression tests for Linux EPUB Reader's helpers and EPUB parser."""
 import os
 import sys
 import tempfile
+from pathlib import Path
 import unittest
 import zipfile
 
@@ -46,10 +47,37 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(reader.chapter_progress_fraction(0, 0, 20), 0.0)
 
 
+class DrmNoticeTests(unittest.TestCase):
+    def test_adobe_drm_notice_does_not_offer_an_external_reader(self):
+        title, message = reader.drm_notice_for("/books/protected.epub", "Adobe DRM-protected EPUB")
+        self.assertEqual(title, "DRM-protected book cannot be opened")
+        self.assertIn("cannot read this protection format", message)
+        self.assertIn("will not try to launch Adobe Digital Editions", message)
+        self.assertIn("will not connect to the internet", message)
+
+    def test_acsm_notice_explains_it_will_not_fulfil_or_launch(self):
+        title, message = reader.drm_notice_for("/books/book.acsm", "Adobe DRM download file")
+        self.assertEqual(title, "ACSM files cannot be read offline")
+        self.assertIn("will not fulfil this file", message)
+        self.assertIn("launch another application", message)
+
+    def test_pdf_notice_does_not_launch_another_reader(self):
+        title, message = reader.drm_notice_for("/books/document.pdf", "PDF document")
+        self.assertEqual(title, "PDF files are not supported")
+        self.assertIn("will not launch a PDF reader", message)
+
+    def test_unsupported_file_handling_has_no_external_launch_code(self):
+        source_path = Path(reader.__file__)
+        source = source_path.read_text(encoding="utf-8")
+        for forbidden in ("subprocess.Popen", "subprocess.run", "_offer_external_drm_reader",
+                          "find_adobe_digital_editions", 'shutil.which("thorium")'):
+            self.assertNotIn(forbidden, source)
+
+
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.0")
+        self.assertEqual(reader.APP_VERSION, "0.13.1")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
