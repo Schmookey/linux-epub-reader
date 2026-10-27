@@ -1,5 +1,5 @@
 Package: linux-epub-reader
-Version: 0.13.0-1
+Version: 0.13.1-1
 Section: text
 Priority: optional
 Architecture: all
@@ -9,4 +9,4 @@ Description: Local-first dark-mode EPUB reader
  A text-oriented EPUB reader for Linux with continuous chapter scrolling,
  a left-hand table of contents, bookmarks and chapter progress.
  .
- Adobe DRM is detected but not natively implemented in this application.
+ Adobe DRM is detected but not natively implemented in this application.\n .\n Protected books show an explanatory notice; no external reader is launched.
