@@ -15,16 +15,22 @@ finish-args:
   - --env=TK_LIBRARY=/app/lib/tk8.6
 
 modules:
-  - name: tkinter
+  - name: python-with-tk
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
-    post-install:
-      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/tkinter-standalone/LICENSE
+      - |
+        export TCLTK_CFLAGS="-I${FLATPAK_DEST}/include"
+        export TCLTK_LIBS="-L${FLATPAK_DEST}/lib -ltk8.6 -ltcl8.6"
+        export LDFLAGS="-Wl,-rpath,${FLATPAK_DEST}/lib"
+        ./configure --prefix=${FLATPAK_DEST} --enable-shared --with-ensurepip=no --disable-test-modules
+      - make -j2
+      - make install
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/python/LICENSE
+      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib TCL_LIBRARY=${FLATPAK_DEST}/lib/tcl8.6 TK_LIBRARY=${FLATPAK_DEST}/lib/tk8.6 ${FLATPAK_DEST}/bin/python3.13 -c 'import tkinter, _tkinter; print("Bundled Python/Tkinter import passed")'
     sources:
-      - type: git
-        url: https://github.com/iwalton3/tkinter-standalone.git
-        commit: d9cb97c5bd4f814c73678366e0e48220776b6ad3
+      - type: archive
+        url: https://www.python.org/ftp/python/3.13.18/Python-3.13.18.tar.xz
+        sha256: abb0102e6d4ae027509bcb82327d9dd85515b44a3ba8ad538cfc5e9847029f68
     modules:
       - name: tcl
         buildsystem: autotools
