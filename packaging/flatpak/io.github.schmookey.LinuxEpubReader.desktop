@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Linux EPUB Reader
+Comment=Read EPUB books offline
+Exec=linux-epub-reader %f
+Icon=io.github.schmookey.LinuxEpubReader
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/epub+zip;
+StartupNotify=true
