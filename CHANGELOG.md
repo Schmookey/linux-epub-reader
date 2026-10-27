@@ -1,12 +1,18 @@
 # Changelog
 
+## 0.13.3-1 — Optional full-screen exit hint
+
+- Show a floating Mint-green “F11 · Exit full-screen” button near the bottom of the reading panel.
+- Add a “Don't show this again” checkbox that saves the preference locally.
+- Keep F11 and Esc working regardless of the hint preference.
+- Allow the hint to be restored from View → Show full-screen exit hint.
+- Add regression tests for initial visibility, saved opt-out and restoring the hint.
+
 ## 0.13.2-1 — Fixed sidebar layout and sizing
 
 - Replace the draggable pane splitter with a fixed two-column layout so the reading page occupies its own column and does not slide underneath the contents.
 - Measure the longest nested chapter label including estimated page count, and size the sidebar dynamically within the available window width.
 - Place the Mint-green hide button on the right edge of the sidebar and show a matching reopen button at the reading area's left edge when the sidebar is hidden.
-- Add regression tests for sidebar-width calculation.
-- Update installer version and instructions.
 
 ## 0.13.1 — No external DRM applications
 
