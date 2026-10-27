@@ -49,9 +49,18 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
 The Debian package uses gzip compression for broader compatibility with older package managers.
 
-The output is dist/linux-epub-reader_0.13.6-2_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.7-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.6-2_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.7-1_all.deb
+
+## Privacy and project boundary
+
+**Linux EPUB Reader is intended to remain offline-only. No cloud implementation is planned or permitted.**
+
+- No user accounts, cloud storage, remote bookmark or reading-position synchronisation, analytics, telemetry, advertising trackers, or automatic crash reports.
+- Reading positions, bookmarks, and preferences stay on the user's computer.
+- Future language settings, theme options, and accessibility or screen-reader integrations must work locally and offline. Any proposed component must be reviewed to ensure it does not send reading data or other personal data to a remote service.
+- Any proposal that introduces network communication or remote data storage is out of scope unless the project owner explicitly changes this requirement.
 
 ## Local data and offline behaviour
 
