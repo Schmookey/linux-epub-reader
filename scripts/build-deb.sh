@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PKGROOT="$ROOT/build/package"
-VERSION="0.13.5-1"
+VERSION="0.13.6-1"
 PKG="linux-epub-reader"
 rm -rf "$PKGROOT"
 install -d "$PKGROOT/DEBIAN" "$PKGROOT/usr/lib/linux-epub-reader/src" "$PKGROOT/usr/bin" "$PKGROOT/usr/share/applications" "$PKGROOT/usr/share/icons/hicolor/scalable/apps"
