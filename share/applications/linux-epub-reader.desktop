@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Linux EPUB Reader
-Comment=Linux EPUB Reader v0.13.6 — read EPUB books offline
+Comment=Linux EPUB Reader v0.13.7 — read EPUB books offline
 Exec=/usr/bin/python3 /usr/lib/linux-epub-reader/src/linux_epub_reader.py %f
 Icon=linux-epub-reader
 Terminal=false
