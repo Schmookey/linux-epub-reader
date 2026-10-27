@@ -18,9 +18,9 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 ## Current limitations
 
 - This is a text-oriented EPUB reader, not a full browser-grade EPUB renderer. Publisher CSS, illustrations, tables, embedded media, fixed-layout publications and some complex layouts are not rendered faithfully.
-- Adobe DRM is not implemented inside this application. The app can detect protected files and, where configured, hand an existing Adobe-protected EPUB/PDF to a separately installed Adobe Digital Editions setup under Wine. That external reader has its own dependencies and network behaviour, which this application cannot guarantee or control.
+- Adobe DRM is not implemented inside this application. The app can detect protected files and, displays an explanatory notice and stops. It never launches Adobe Digital Editions, Wine, Thorium Reader, a PDF reader or any other external application for protected or unsupported files.
 - ACSM files are download/fulfilment instructions, not book contents. This application does not fulfil them or contact a publisher.
-- Readium LCP support is a local hand-off to an already-installed Thorium Reader when its command is available; it is not native decryption in this app.
+- Readium LCP-protected files are identified and explained in a notice; no external reader is launched.
 - Chapter page counts are estimates unless a publication provides page markers.
 - Automated tests are included, and a three-chapter virtual-desktop smoke test passed during this update. That smoke test is not yet part of the committed automated suite; please test on a real Linux Mint desktop before relying on the reader for important books.
 
@@ -28,7 +28,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 
 - Linux desktop with Python 3 and Tkinter (python3, python3-tk).
 - Optional: fonts-atkinson-hyperlegible for the preferred typeface. The reader falls back to available fonts if it is absent.
-- Optional, for external protected-book hand-off only: a separately installed and configured compatible reader. Wine and Adobe Digital Editions are not bundled.
+- No external reader is required or launched. DRM-protected EPUBs and PDFs remain unreadable in-app until an authorised engine is integrated.
 
 The app uses Python's standard library and Tkinter; no third-party Python package is required.
 
@@ -50,7 +50,7 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
     bash scripts/build-deb.sh
 
-The output is dist/linux-epub-reader_0.13.0-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.1-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
     sudo apt install ./dist/linux-epub-reader_0.13.0-1_all.deb
 
@@ -58,7 +58,7 @@ The output is dist/linux-epub-reader_0.13.0-1_all.deb. Install it by double-clic
 
 Reading state is stored in ~/.local/share/linux-epub-reader/. On first launch, the app attempts to copy saved state from the former ~/.local/share/mint-epub-reader/ directory when corresponding new files do not already exist.
 
-The reader source does not implement HTTP clients or fetch book content. It does not open web pages or download software. Handing a protected book to a separate program means that program's network behaviour is outside this project's control. For a strict offline requirement, test with networking disabled and do not use external reader software unless you have separately verified its behaviour.
+The reader source does not implement HTTP clients or fetch book content. It does not open web pages or download software. Protected and unsupported files trigger a local explanatory message only; no external application is launched.
 
 ## Contributing
 
