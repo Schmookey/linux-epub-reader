@@ -1,14 +1,15 @@
-# Pre-release checklist
+# Release checklist
 
-Before making a public GitHub release or submitting the app to a software catalogue:
-
-- [ ] Choose a project licence, add its complete text as `LICENSE`, and update `LICENSE_STATUS.md`.
-- [ ] Set a real maintainer identity/contact in `packaging/debian/control` if a Debian package will be distributed.
-- [ ] Test the application on a supported, real Linux Mint desktop.
-- [ ] Check opening, scrolling, left-hand contents, full-screen, reading-position restoration and bookmarks with more than one DRM-free EPUB.
-- [ ] Verify that any claim about DRM support is limited to the tested external-reader hand-off. No Adobe DRM engine is bundled in this repository.
-- [ ] Verify any external DRM application separately with the network disconnected if offline behaviour is a requirement.
-- [ ] Check keyboard focus, display scaling, contrast and icon/desktop-entry appearance.
-- [ ] Review the source for personal information, test books, licence files, private keys and credentials before publishing.
-- [ ] Build the `.deb` from the source and test installation, upgrade, launch and removal on a disposable Linux Mint system.
-- [ ] Tag the tested version and attach the corresponding source archive and Debian package to a GitHub Release.
+- [x] Application identity and paths use Linux EPUB Reader.
+- [x] Chapter text flows continuously in reading order.
+- [x] Progress bar reports 0–100% within the active chapter and reaches 100% at its final scroll position.
+- [x] Contents sidebar width is measured from chapter/page labels and capped for very long titles.
+- [x] Mint-green sidebar toggle hides/restores the left panel without dragging.
+- [x] Unit tests cover chapter-progress normalisation and synthetic EPUB parsing.
+- [x] Virtual desktop test opens a three-chapter book, checks continuous reading, progress reaching 100%, and sidebar hide/show.
+- [x] Debian package built and inspected locally.
+- [ ] Test installation and upgrades on a real Linux Mint desktop.
+- [ ] Test with a broad selection of non-DRM EPUB files.
+- [ ] Verify saved positions/bookmarks on the user's machine after upgrade.
+- [ ] Adobe DRM remains unimplemented in-app until a licensed compatible engine is available.
+- [ ] Review the selected CC BY-NC-SA 4.0 licence for software-distribution suitability.
