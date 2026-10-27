@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.6 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.7 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.6"
+APP_VERSION = "0.13.7"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -28,6 +28,25 @@ LEGACY_STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "min
 DEFAULT_BG = "#000000"
 DEFAULT_FG = "#E0E0E0"
 FONT_NAME = "Atkinson Hyperlegible"
+WELCOME_TEXT = (
+    "Welcome to Linux EPUB Reader"
+    +     ""
+    +     "Linux EPUB Reader is a simple, offline EPUB reader. Open an EPUB file to read it in one continuous reading panel. Use the Contents panel to move between chapters, Search to find text, and Bookmarks to save places you want to return to. Press F11 for full-screen reading and Esc to return."
+    +     ""
+    +     "The app uses Atkinson Hyperlegible in a dark theme, with light text on a black background. You can adjust the text size."
+    +     ""
+    +     "What is saved?"
+    +     "The app saves the book's file location, your current chapter and approximate reading position. When you add a bookmark, it saves its name, chapter and position. Your saved information is updated as you read and when you close the app."
+    +     ""
+    +     "Where is it saved?"
+    +     "Your reading information is kept in a local file on your computer:"
+    +     "~/.local/share/linux-epub-reader/reading_state.json"
+    +     "The file contains reading information, not a copy of the book's text."
+    +     ""
+    +     "Privacy and GDPR"
+    +     "The app is designed to minimise personal data. Reading positions, bookmarks and preferences stay on your computer. There are no accounts, cloud services, analytics or reading-history uploads. The app does not send this information to the developer or other services."
+    +     "This describes how the application handles data and its privacy-focused design; it is not a blanket legal certification of GDPR compliance."
+)
 CONTAINER = "META-INF/container.xml"
 FONT_OBFUSCATION_ALGORITHMS = {
     "http://www.idpf.org/2008/embedding",
@@ -673,7 +692,7 @@ class Reader(tk.Tk):
         self.progress_percent.pack(side=tk.RIGHT, padx=(10, 0))
         self.progress = ttk.Progressbar(self.bottom, style="LinuxEPUB.Horizontal.TProgressbar", orient=tk.HORIZONTAL, mode="determinate", maximum=100, length=240)
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
-        self.set_text("Welcome to Linux EPUB Reader\n\nOpen an EPUB to begin. Chapters flow continuously in one reading pane, and the green progress bar reports your position within the current chapter from 0% to 100%. Use the contents panel to jump to a chapter, or the Mint-green arrow on the panel edge to hide or restore it. Press F11 for distraction-free full-screen reading. Chapter page counts are estimates unless the publication supplies page markers.\n\nReading defaults: Atkinson Hyperlegible 11 pt, soft-white text on black, approximately 1.5× line spacing, and a medium-width reading column.")
+        self.set_text(WELCOME_TEXT)
 
     def show_about(self):
         """Show the running application version so installed builds are easy to verify."""
