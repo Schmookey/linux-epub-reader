@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.0 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.1 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
 media are not rendered. Chapter page counts are estimates unless publisher page
 markers are supplied.
 """
-import os, re, sys, json, zipfile, posixpath, hashlib, html, io, base64, subprocess, shutil, glob
+import os, re, sys, json, zipfile, posixpath, hashlib, html, io, base64, shutil
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.13.1"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -33,9 +33,8 @@ FONT_OBFUSCATION_ALGORITHMS = {
     "http://www.idpf.org/2008/embedding",
     "http://ns.adobe.com/pdf/enc#RC",
 }
-# This application never opens web pages or downloads book content.
-# DRM hand-off is optional and only launches already-installed local software.
-ADOBE_CONFIG_FILE = os.path.join(STATE_DIR, "adobe_drm.json")
+# This application never opens web pages, fulfils ACSM files, or launches external readers.
+
 
 
 def detect_drm_input(path):
@@ -46,8 +45,8 @@ def detect_drm_input(path):
     if suffix == ".acsm":
         return "Adobe DRM download file"
     if suffix == ".pdf":
-        # The text-oriented reader cannot render PDFs itself. Route to local ADE
-        # when available instead of trying to parse the file as an EPUB.
+        # PDF display is not implemented. The UI explains this and never launches
+        # a separate PDF or DRM reader.
         return "PDF document"
     if suffix != ".epub":
         return None
@@ -86,13 +85,56 @@ def detect_drm_input(path):
     return None
 
 
+def drm_notice_for(path, drm_type):
+    """Return a local-only notice for an unsupported/protected input.
+
+    Deliberately does not search for, start, or communicate with other software.
+    """
+    suffix = os.path.splitext(path)[1].lower()
+    if suffix == ".acsm" or drm_type == "Adobe DRM download file":
+        return (
+            "ACSM files cannot be read offline",
+            "An .acsm file is a fulfilment instruction, not the ebook itself. It does not contain the complete book text.\n\n"
+            "Linux EPUB Reader will not fulfil this file, contact a publisher, open a website, or launch another application. "
+            "To respect your offline-only requirement, please open an EPUB or PDF that has already been downloaded; "
+            "Adobe DRM-protected files will still not be readable inside this app."
+        )
+    if suffix == ".pdf" or drm_type == "PDF document":
+        return (
+            "PDF files are not supported",
+            "Linux EPUB Reader currently reads text-oriented EPUB files and cannot display PDFs.\n\n"
+            "It will not launch a PDF reader, Adobe Digital Editions, Wine, or any other application. "
+            "Your file has not been changed."
+        )
+    if drm_type == "Readium LCP licence" or suffix == ".lcpl":
+        return (
+            "Readium LCP book cannot be opened",
+            "This file is a Readium LCP licence, not readable book content. Linux EPUB Reader does not fulfil licence files.\n\n"
+            "It will not launch Thorium Reader or any other application, open a website, or connect to the internet. "
+            "Your file has not been changed."
+        )
+    if drm_type in ("Readium LCP-protected EPUB", "Adobe DRM-protected EPUB") or "encrypt" in str(drm_type).lower() or "drm" in str(drm_type).lower():
+        kind = "Adobe DRM-protected EPUB" if "Adobe" in str(drm_type) else "DRM-protected or encrypted EPUB"
+        return (
+            "DRM-protected book cannot be opened",
+            f"This file appears to be a {kind}. Linux EPUB Reader cannot read this protection format.\n\n"
+            "As requested, it will not try to launch Adobe Digital Editions, Wine, Thorium Reader, or any other application. "
+            "It will not connect to the internet. Your book has not been changed."
+        )
+    return (
+        "Book cannot be opened",
+        "Linux EPUB Reader cannot open this protected or unsupported file.\n\n"
+        "It will not launch another application or connect to the internet. Your file has not been changed."
+    )
+
+
 def migrate_legacy_state():
     """Copy settings from an older installation without overwriting newer data."""
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
     except OSError:
         return
-    for filename in ("reading_state.json", "adobe_drm.json"):
+    for filename in ("reading_state.json",):
         old_path = os.path.join(LEGACY_STATE_DIR, filename)
         new_path = os.path.join(STATE_DIR, filename)
         if os.path.exists(new_path) or not os.path.isfile(old_path):
@@ -103,76 +145,6 @@ def migrate_legacy_state():
             # Reading remains usable if migration is unavailable; state saving
             # will report no user-facing error until the next explicit save.
             pass
-
-
-def find_adobe_digital_editions():
-    """Find a conventional Wine-prefix install of Adobe Digital Editions."""
-    config_path = ADOBE_CONFIG_FILE
-    try:
-        with open(config_path, "r", encoding="utf-8") as stream:
-            configured = json.load(stream).get("executable", "")
-        if configured and os.path.isfile(configured):
-            return os.path.abspath(configured)
-    except (OSError, ValueError, TypeError):
-        pass
-
-    home = os.path.expanduser("~")
-    prefixes = [
-        os.path.join(home, ".wine"),
-        os.path.join(home, ".wine32"),
-        os.path.join(home, ".wine-adobe"),
-        os.path.join(home, ".local", "share", "wineprefixes", "adobe"),
-        os.path.join(home, ".PlayOnLinux", "wineprefix", "AdobeDigitalEditions"),
-    ]
-    versions = (
-        "Adobe Digital Editions 3.0",
-        "Adobe Digital Editions 4.5",
-        "Adobe Digital Editions",
-    )
-    for prefix in prefixes:
-        for program_dir in ("Program Files (x86)", "Program Files"):
-            for version in versions:
-                candidate = os.path.join(prefix, "drive_c", program_dir, "Adobe", version, "Digital Editions.exe")
-                if os.path.isfile(candidate):
-                    return os.path.abspath(candidate)
-    # PlayOnLinux may use a versioned prefix name.
-    patterns = [
-        os.path.join(home, ".PlayOnLinux", "wineprefix", "*", "drive_c", "Program Files*", "Adobe", "Adobe Digital Editions*", "Digital Editions.exe"),
-    ]
-    for pattern in patterns:
-        for candidate in glob.glob(pattern):
-            if os.path.isfile(candidate):
-                return os.path.abspath(candidate)
-    return None
-
-
-def adobe_wine_prefix(executable):
-    """Infer the Wine prefix from the path containing drive_c."""
-    path = os.path.abspath(executable)
-    parts = path.split(os.sep)
-    for index, part in enumerate(parts):
-        if part.lower() == "drive_c":
-            prefix = os.sep.join(parts[:index]) or os.sep
-            return prefix
-    return os.path.expanduser("~/.wine")
-
-
-def wine_windows_path(path, wine_env):
-    """Convert a Linux filename to a Windows path usable by ADE under Wine."""
-    winepath = shutil.which("winepath") or shutil.which("winepath-stable")
-    if winepath:
-        try:
-            result = subprocess.run(
-                [winepath, "-w", os.path.abspath(path)], env=wine_env,
-                check=True, capture_output=True, text=True, timeout=5,
-            )
-            converted = result.stdout.strip()
-            if converted:
-                return converted
-        except (OSError, subprocess.SubprocessError):
-            pass
-    # Wine's Z: drive commonly maps to the host root filesystem.
-    return "Z:" + os.path.abspath(path).replace("/", "\\")
 
 
 def lname(tag):
@@ -869,144 +841,16 @@ class Reader(tk.Tk):
         )
         if path: self.open_book(path)
 
-    def _launch_adobe_digital_editions(self, executable, path):
-        """Hand an existing protected book to locally installed ADE under Wine.
-
-        This does not fulfil ACSM files and does not make network requests from
-        Linux EPUB Reader. ADE is a separate application and its own network behaviour
-        is outside this application's control.
-        """
-        wine = shutil.which("wine") or shutil.which("wine-stable") or shutil.which("wine64")
-        if not wine:
-            messagebox.showinfo(
-                "Wine is not available",
-                "Linux EPUB Reader cannot launch Adobe Digital Editions because Wine was not found.\n\n"
-                "This offline-only version will not open websites, download software, or fulfil ACSM files. "
-                "Install and configure your authorised reader separately, then try the existing protected EPUB again."
-            )
-            return
-        prefix = adobe_wine_prefix(executable)
-        wine_env = os.environ.copy()
-        wine_env["WINEPREFIX"] = prefix
-        windows_path = wine_windows_path(path, wine_env)
-        try:
-            subprocess.Popen(
-                [wine, os.path.abspath(executable), windows_path],
-                env=wine_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except OSError as exc:
-            messagebox.showerror(
-                "Could not launch Adobe Digital Editions",
-                f"Linux EPUB Reader could not start Adobe Digital Editions.\n\n{exc}\n\n"
-                "Your book has not been changed. Check that Wine and Adobe Digital Editions are already installed correctly."
-            )
-
-    def _offer_adobe_reader(self, path, drm_type):
-        """Offer a local Adobe Digital Editions hand-off without online setup."""
-        executable = find_adobe_digital_editions()
-        wine = shutil.which("wine") or shutil.which("wine-stable") or shutil.which("wine64")
-        if executable and wine:
-            self._launch_adobe_digital_editions(executable, path)
-            return
-        if executable and not wine:
-            messagebox.showinfo(
-                "Wine is needed",
-                "An Adobe Digital Editions executable was found, but Wine is not available on the command path.\n\n"
-                "Linux EPUB Reader will not open a website or install anything. The book has not been changed."
-            )
-            return
-        detail = (
-            f"This file was identified as {drm_type}. Linux EPUB Reader cannot decrypt Adobe-protected books itself. "
-            "It can hand an already-authorised EPUB/PDF to an existing Adobe Digital Editions installation running under Wine.\n\n"
-            "This offline-only build will not contact Adobe or a publisher, fulfil an ACSM file, open a web page, "
-            "or download software. If Digital Editions is already installed, choose its ‘Digital Editions.exe’ file."
-        )
-        choice = messagebox.askyesnocancel(
-            "Adobe DRM reader not configured",
-            detail + "\n\nYes: choose an existing Digital Editions.exe\nNo or Cancel: do nothing",
-        )
-        if choice is not True:
-            return
-        selected = filedialog.askopenfilename(
-            title="Choose existing Adobe Digital Editions executable",
-            initialdir=os.path.expanduser("~/.wine/drive_c/Program Files (x86)/Adobe"),
-            filetypes=[("Adobe Digital Editions executable", "Digital Editions.exe"), ("Windows programs", "*.exe"), ("All files", "*.*")],
-        )
-        if not selected:
-            return
-        if not wine:
-            messagebox.showinfo(
-                "Wine is needed",
-                "Wine was not found. Linux EPUB Reader cannot launch this Windows application.\n\n"
-                "No website was opened and nothing was downloaded."
-            )
-            return
-        try:
-            os.makedirs(STATE_DIR, exist_ok=True)
-            with open(ADOBE_CONFIG_FILE, "w", encoding="utf-8") as stream:
-                json.dump({"executable": os.path.abspath(selected)}, stream, indent=2)
-        except OSError as exc:
-            messagebox.showwarning(
-                "Could not save Adobe reader setting",
-                f"The path was not saved, but you can still try to open the book.\n\n{exc}"
-            )
-        self._launch_adobe_digital_editions(selected, path)
-
-    def _offer_external_drm_reader(self, path, drm_type):
-        """Route protected content only to local software; never open network links."""
-        suffix = os.path.splitext(path)[1].lower()
-        if drm_type == "Adobe DRM download file" or suffix == ".acsm":
-            messagebox.showinfo(
-                "ACSM files cannot be read offline",
-                "An .acsm file is a fulfilment instruction, not the ebook itself. It does not contain the complete book text.\n\n"
-                "Obtaining the associated EPUB/PDF normally requires an online fulfilment step. To respect your offline-only "
-                "requirement, Linux EPUB Reader will not launch fulfilment or contact a publisher. Please open the actual, "
-                "already-downloaded EPUB/PDF instead."
-            )
-            return
-
-        if drm_type == "Adobe DRM-protected EPUB" or suffix == ".pdf":
-            self._offer_adobe_reader(path, drm_type if suffix != ".pdf" else "PDF document")
-            return
-
-        if drm_type in ("Readium LCP licence", "Readium LCP-protected EPUB"):
-            detail = (
-                "This publication appears to use Readium LCP protection. Linux EPUB Reader cannot decrypt it itself. "
-                "If Thorium Reader is already installed, this app can hand the existing file to it. "
-                "This app will not open websites or download software."
-            )
-            thorium = shutil.which("thorium")
-            if thorium:
-                try:
-                    subprocess.Popen([thorium, os.path.abspath(path)], stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, start_new_session=True)
-                except OSError as exc:
-                    messagebox.showerror("Could not launch Thorium Reader", f"{detail}\n\nError: {exc}")
-                return
-            messagebox.showinfo(
-                "Readium LCP publication",
-                detail + "\n\nThorium Reader's local command-line launcher was not found. No website was opened."
-            )
-            return
-
-        detail = (
-            "This EPUB contains encrypted content, but Linux EPUB Reader could not identify the protection system. "
-            "It will not decrypt, remove or bypass DRM. If you already have an authorised compatible reader installed, "
-            "you can try selecting its local executable. This app will not open websites or download software."
-        )
-        choice = messagebox.askyesnocancel(
-            "Encrypted EPUB",
-            detail + "\n\nYes: choose Adobe Digital Editions\nNo or Cancel: do nothing",
-        )
-        if choice is True:
-            self._offer_adobe_reader(path, "an encrypted EPUB of an unconfirmed DRM type")
+    def _show_drm_notice(self, path, drm_type):
+        """Explain that a protected/unsupported file cannot be read here; never hand it off."""
+        title, message = drm_notice_for(path, drm_type)
+        messagebox.showinfo(title, message)
 
     def open_book(self, path):
         path = os.path.abspath(os.path.expanduser(path))
         drm_type = detect_drm_input(path)
         if drm_type:
-            self._offer_external_drm_reader(path, drm_type)
+            self._show_drm_notice(path, drm_type)
             return
         try:
             book = EPUBBook(path)
