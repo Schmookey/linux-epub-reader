@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.4 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.5 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.4"
+APP_VERSION = "0.13.5"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -437,7 +437,6 @@ class Reader(tk.Tk):
         self.line_spacing = 1.5
         self.column_width = 700
         self.is_fullscreen = False
-        self.fullscreen_column = False
         migrate_legacy_state()
         self.state = self._load_state()
         self.hide_fullscreen_hint_var = tk.BooleanVar(
@@ -615,7 +614,10 @@ class Reader(tk.Tk):
         self.reading_area = tk.Frame(self.text_frame, bg=APP_BG, bd=0, highlightthickness=0)
         self.reading_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.text_surface = tk.Frame(self.reading_area, bg=DEFAULT_BG, bd=0, highlightthickness=0)
-        self.text_surface.place(relx=0.5, rely=0, anchor="n", width=self.column_width, relheight=1)
+        # Let the reading surface follow its parent instead of placing it at a fixed
+        # pixel width. This keeps book text fitted to the available panel when the
+        # window enters/exits full-screen or is resized.
+        self.text_surface.pack(fill=tk.BOTH, expand=True)
         self.text = tk.Text(self.text_surface, wrap=tk.WORD, padx=22, pady=20,
             font=(FONT_NAME, self.font_size), foreground=DEFAULT_FG, background=DEFAULT_BG,
             insertbackground=DEFAULT_FG, selectforeground=DEFAULT_BG, selectbackground=DEFAULT_FG,
@@ -627,7 +629,6 @@ class Reader(tk.Tk):
         self.text_scroll = ttk.Scrollbar(self.text_frame, orient=tk.VERTICAL, command=self.text.yview)
         self.text.configure(yscrollcommand=self._on_scroll)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.reading_area.bind("<Configure>", self._size_reading_column)
         self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
         self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
                                 spacing1=12, spacing3=10)
@@ -831,13 +832,6 @@ class Reader(tk.Tk):
         except tk.TclError:
             self.text.yview(marks["start"])
 
-    def _size_reading_column(self, event):
-        # Keep the comfortable ~700 px column in normal mode, but let it use
-        # the available width in full-screen mode. Font size and spacing stay put.
-        available = max(200, event.width - 8)
-        width = available if self.fullscreen_column else min(self.column_width, available)
-        self.text_surface.place_configure(width=width)
-
     def _update_progress(self):
         if not self.book or not self.chapter_marks:
             return
@@ -894,7 +888,6 @@ class Reader(tk.Tk):
         self._ensure_toc_left()
         if self.sidebar_visible:
             self.after_idle(self._fit_sidebar_to_contents)
-        self.after_idle(self._refresh_reading_column)
 
     def _panes_configured(self, _event=None):
         """Re-fit the contents pane when the application window changes size."""
@@ -1085,7 +1078,6 @@ class Reader(tk.Tk):
     def toggle_fullscreen(self):
         if self.is_fullscreen: self.exit_fullscreen(); return
         self.is_fullscreen = True
-        self.fullscreen_column = True
         self.toolbar.pack_forget()
         self.panes.pack_configure(padx=0, pady=0)
         self.left.grid_remove()
@@ -1106,14 +1098,7 @@ class Reader(tk.Tk):
         self.progress_percent.pack(side=tk.RIGHT, padx=(8, 0))
         self.bottom.pack_configure(fill=tk.X, padx=0, pady=0)
         self.attributes("-fullscreen", True)
-        self.after_idle(self._refresh_reading_column)
         self.after_idle(self._update_fullscreen_hint)
-
-    def _refresh_reading_column(self):
-        try:
-            self._size_reading_column(type("Event", (), {"width": self.reading_area.winfo_width()})())
-        except tk.TclError:
-            pass
 
     def _update_fullscreen_hint(self):
         """Show the floating F11 control only when fullscreen and not opted out."""
@@ -1150,7 +1135,6 @@ class Reader(tk.Tk):
         self.fullscreen_hint.place_forget()
         self.attributes("-fullscreen", False)
         self.is_fullscreen = False
-        self.fullscreen_column = False
         self._ensure_toc_left()
         self.panes.pack_configure(padx=10, pady=(8, 6))
         self.right.configure(padding=6)
@@ -1166,7 +1150,6 @@ class Reader(tk.Tk):
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
         self.status.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.bottom.pack_configure(fill=tk.X)
-        self.after_idle(self._refresh_reading_column)
         if self.sidebar_visible:
             self.after_idle(self._fit_sidebar_to_contents)
 
