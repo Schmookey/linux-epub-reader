@@ -47,9 +47,9 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
     bash scripts/build-deb.sh
 
-The output is dist/linux-epub-reader_0.13.3-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.4-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.3-1_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.4-1_all.deb
 
 ## Local data and offline behaviour
 
