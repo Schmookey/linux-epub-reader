@@ -1,0 +1,71 @@
+app-id: io.github.schmookey.LinuxEpubReader
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: linux-epub-reader
+
+# GitHub release bundle, not a Flathub submission. Do not add network access.
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --filesystem=home:ro
+  # Keep reading-state writes limited to the application's existing state directory.
+  - --filesystem=~/.local/share/linux-epub-reader:create
+  - --env=TCL_LIBRARY=/app/lib/tcl9.0
+  - --env=TK_LIBRARY=/app/lib/tk9.0
+
+modules:
+  - name: tkinter
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
+    post-install:
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/tkinter-standalone/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone.git
+        commit: d9cb97c5bd4f814c73678366e0e48220776b6ad3
+    modules:
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --enable-threads
+          - --enable-shared
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9.0.so
+          - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tcl/LICENSE
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.2-src.tar.gz
+            sha256: e074c6a8d9ba2cddf914ba97b6677a552d7a52a3ca102924389a05ccb249b520
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --enable-threads
+          - --enable-shared
+          - --disable-zipfs
+        post-install:
+          - chmod +w ${FLATPAK_DEST}/lib/libtcl9tk9.0.so
+          - ln -sf /app/bin/wish9.0 /app/bin/wish
+          - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tk/LICENSE
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.2-src.tar.gz
+            sha256: 76fb852b2f167592fe8b41aa6549ce4e486dbf3b259a269646600e3894517c76
+
+  - name: linux-epub-reader
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 packaging/flatpak/linux-epub-reader-launcher ${FLATPAK_DEST}/bin/linux-epub-reader
+      - install -Dm644 src/linux_epub_reader.py ${FLATPAK_DEST}/lib/linux-epub-reader/linux_epub_reader.py
+      - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.desktop ${FLATPAK_DEST}/share/applications/io.github.schmookey.LinuxEpubReader.desktop
+      - install -Dm644 share/icons/hicolor/scalable/apps/linux-epub-reader.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.schmookey.LinuxEpubReader.svg
+      - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.schmookey.LinuxEpubReader.metainfo.xml
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/io.github.schmookey.LinuxEpubReader/LICENSE
+      - install -Dm644 packaging/flatpak/THIRD_PARTY_NOTICES.md ${FLATPAK_DEST}/share/doc/linux-epub-reader/THIRD_PARTY_NOTICES.md
+    sources:
+      - type: dir
+        path: .
