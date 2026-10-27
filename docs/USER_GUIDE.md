@@ -22,9 +22,9 @@ The default appearance is dark, with soft-white text, Atkinson Hyperlegible when
 
 ## Protected books and ACSM files
 
-The app detects Adobe ADEPT and Readium LCP protection, but it does not contain an Adobe DRM engine and does not remove DRM. An already-authorised protected book may be handed to a separately installed compatible reader when configured. Network behaviour of external software is outside this app's control.
+The app detects Adobe ADEPT and Readium LCP protection, but it does not contain an Adobe DRM engine and does not remove DRM. When a protected book is selected, the app shows an explanatory message and stops. It will not launch Adobe Digital Editions, Wine, Thorium Reader, a PDF reader or any other external application. The app will not open a website, contact a publisher or fulfil ACSM files.
 
-An ACSM file is a fulfilment instruction, not the book itself. This app does not fulfil ACSM files or download books.
+An ACSM file is a fulfilment instruction, not the book itself. This app does not fulfil ACSM files, download books or launch another program to handle them.
 
 ## Troubleshooting
 
