@@ -1181,7 +1181,7 @@ class Reader(tk.Tk):
         self._populate_toc()
         self._update_progress()
 
-def show_details(self, first_open=False):
+    def show_details(self, first_open=False):
         if not self.book or first_open:
             return
         b = self.book
