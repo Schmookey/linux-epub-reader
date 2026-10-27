@@ -28,6 +28,8 @@ Description: Local-first dark-mode EPUB reader
  a left-hand table of contents, bookmarks and chapter progress.
  .
  Adobe DRM is detected but not natively implemented in this application.
+ .
+ Protected books show a local notice; no external reader is launched.
 EOF_CONTROL
 mkdir -p "$ROOT/dist"
 dpkg-deb --root-owner-group --build "$PKGROOT" "$ROOT/dist/linux-epub-reader_0.13.0-1_all.deb"
