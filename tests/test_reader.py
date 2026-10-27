@@ -48,6 +48,24 @@ class ProgressTests(unittest.TestCase):
 
 
 
+class FullscreenHintTests(unittest.TestCase):
+    def test_hint_is_shown_on_first_fullscreen_entry(self):
+        self.assertTrue(reader.fullscreen_hint_should_show({}, True))
+        self.assertTrue(reader.fullscreen_hint_should_show({"hide_fullscreen_hint": False}, True))
+
+    def test_hint_is_not_shown_outside_fullscreen(self):
+        self.assertFalse(reader.fullscreen_hint_should_show({}, False))
+
+    def test_hint_stays_hidden_after_saved_opt_out(self):
+        saved_state = {"hide_fullscreen_hint": True}
+        self.assertFalse(reader.fullscreen_hint_should_show(saved_state, True))
+
+    def test_hint_can_be_restored_by_clearing_saved_opt_out(self):
+        saved_state = {"hide_fullscreen_hint": True}
+        saved_state["hide_fullscreen_hint"] = False
+        self.assertTrue(reader.fullscreen_hint_should_show(saved_state, True))
+
+
 class SidebarWidthTests(unittest.TestCase):
     def test_width_fits_longest_label_when_space_is_available(self):
         self.assertEqual(reader.sidebar_width_for_labels(
@@ -105,7 +123,7 @@ class DrmNoticeTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.2")
+        self.assertEqual(reader.APP_VERSION, "0.13.3")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
