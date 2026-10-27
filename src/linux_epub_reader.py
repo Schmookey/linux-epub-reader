@@ -762,8 +762,6 @@ class Reader(tk.Tk):
             self.text.yview(marks["start"])
 
     def _size_reading_column(self, event):
-
-    def _size_reading_column(self, event):
         # Keep the comfortable ~700 px column in normal mode, but let it use
         # the available width in full-screen mode. Font size and spacing stay put.
         available = max(200, event.width - 18)
@@ -855,8 +853,6 @@ class Reader(tk.Tk):
                     return
         finally:
             self._setting_toc_selection = False
-
-    def open_dialog(self):
 
     def open_dialog(self):
         path = filedialog.askopenfilename(
@@ -1121,8 +1117,6 @@ class Reader(tk.Tk):
             self.text.yview(self.chapter_marks[index]["start"])
         self._highlight_toc_index(index)
         self.after_idle(self._update_progress)
-
-    def toggle_fullscreen(self):
 
     def toggle_fullscreen(self):
         if self.is_fullscreen: self.exit_fullscreen(); return
