@@ -93,6 +93,23 @@ class SidebarWidthTests(unittest.TestCase):
         self.assertEqual(result, 380)
 
 
+class FullscreenLayoutTests(unittest.TestCase):
+    def test_fullscreen_has_zero_sidebar_column_when_contents_was_open(self):
+        self.assertEqual(reader.sidebar_column_minimum(True, True, 340), 0)
+
+    def test_fullscreen_has_zero_sidebar_column_when_contents_was_closed(self):
+        self.assertEqual(reader.sidebar_column_minimum(False, True, 340), 0)
+
+    def test_normal_window_restores_column_only_when_contents_is_visible(self):
+        self.assertEqual(reader.sidebar_column_minimum(True, False, 340), 340)
+        self.assertEqual(reader.sidebar_column_minimum(False, False, 340), 0)
+
+    def test_fullscreen_entry_recalculates_sidebar_column_minimum(self):
+        source = Path(reader.__file__).read_text(encoding="utf-8")
+        start = source.index("    def toggle_fullscreen(self):")
+        end = source.index("    def _update_fullscreen_hint(self):", start)
+        self.assertIn("self._ensure_toc_left()", source[start:end])
+
 class DrmNoticeTests(unittest.TestCase):
     def test_adobe_drm_notice_does_not_offer_an_external_reader(self):
         title, message = reader.drm_notice_for("/books/protected.epub", "Adobe DRM-protected EPUB")
@@ -123,7 +140,7 @@ class DrmNoticeTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.5")
+        self.assertEqual(reader.APP_VERSION, "0.13.6")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
