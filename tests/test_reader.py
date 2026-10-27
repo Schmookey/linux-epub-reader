@@ -33,8 +33,10 @@ class ProgressTests(unittest.TestCase):
     def test_progress_reaches_one_hundred_at_last_scroll_position(self):
         self.assertEqual(reader.chapter_progress_fraction(80, 100, 20), 1.0)
 
-    def test_chapter_shorter_than_viewport_is_fully_visible(self):
-        self.assertEqual(reader.chapter_progress_fraction(0, 10, 20), 1.0)
+    def test_short_chapter_progress_still_runs_from_zero_to_one_hundred(self):
+        self.assertEqual(reader.chapter_progress_fraction(0, 10, 20), 0.0)
+        self.assertEqual(reader.chapter_progress_fraction(5, 10, 20), 0.5)
+        self.assertEqual(reader.chapter_progress_fraction(10, 10, 20), 1.0)
 
     def test_progress_clamps_invalid_positions(self):
         self.assertEqual(reader.chapter_progress_fraction(-10, 100, 20), 0.0)
