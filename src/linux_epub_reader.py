@@ -174,6 +174,15 @@ def sidebar_width_for_labels(label_widths, available_width, minimum_width=250, r
     return max(minimum, min(required, maximum))
 
 
+def sidebar_column_minimum(sidebar_visible, is_fullscreen, target_width):
+    """Return zero for hidden/full-screen contents so its grid column cannot reserve space."""
+    if is_fullscreen or not sidebar_visible:
+        return 0
+    try:
+        return max(0, int(target_width))
+    except (TypeError, ValueError):
+        return 0
+
 def fullscreen_hint_should_show(state, is_fullscreen):
     """Whether to show the floating F11 hint for the current fullscreen session."""
     return bool(is_fullscreen and not state.get("hide_fullscreen_hint", False))
@@ -860,10 +869,16 @@ class Reader(tk.Tk):
         try:
             self.panes.grid_rowconfigure(0, weight=1)
             self.panes.grid_columnconfigure(1, weight=1)
+            self.panes.grid_columnconfigure(
+                0,
+                minsize=sidebar_column_minimum(
+                    self.sidebar_visible, self.is_fullscreen, self.sidebar_target_width
+                ),
+                weight=0,
+            )
             if self.sidebar_visible and not self.is_fullscreen:
                 self.left.grid()
                 self.left.configure(width=self.sidebar_target_width)
-                self.panes.grid_columnconfigure(0, minsize=self.sidebar_target_width, weight=0)
                 self.sidebar_toggle.grid()
                 self.sidebar_reopen_toggle.place_forget()
                 self.reader_body.pack_configure(padx=0)
