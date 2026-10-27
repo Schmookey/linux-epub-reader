@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+export TCL_LIBRARY="${TCL_LIBRARY:-/app/lib/tcl9.0}"
+export TK_LIBRARY="${TK_LIBRARY:-/app/lib/tk9.0}"
+exec /usr/bin/python3 /app/lib/linux-epub-reader/linux_epub_reader.py "$@"
