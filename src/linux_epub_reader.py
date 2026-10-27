@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.1 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.2 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.1"
+APP_VERSION = "0.13.2"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -153,6 +153,25 @@ def lname(tag):
 
 def clean_text(value):
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def sidebar_width_for_labels(label_widths, available_width, minimum_width=250, reading_min_width=520, padding=72):
+    """Calculate a measured sidebar width while leaving room for the reading pane.
+
+    label_widths are measured text widths including nested-tree indentation. The
+    width has no fixed maximum; the available window width limits it instead.
+    """
+    try:
+        widths = [max(0, int(width)) for width in label_widths]
+        available = max(0, int(available_width))
+        minimum = max(1, int(minimum_width))
+        keep_reading = max(1, int(reading_min_width))
+        extra = max(0, int(padding))
+    except (TypeError, ValueError):
+        return max(1, int(minimum_width))
+    required = max([width for width in widths] + [0]) + extra
+    maximum = max(minimum, available - keep_reading)
+    return max(minimum, min(required, maximum))
 
 
 def chapter_progress_fraction(position_units, content_units, visible_units):
@@ -421,7 +440,7 @@ class Reader(tk.Tk):
         self.chapter_marks = []
         self.rendered_book_key = None
         self.sidebar_visible = True
-        self.sidebar_target_width = 270
+        self.sidebar_target_width = 290
         self._toc_items = {}
         self._setting_toc_selection = False
         self._search_results = []
@@ -514,20 +533,36 @@ class Reader(tk.Tk):
         self.book_label = ttk.Label(self.toolbar, text="No book open", style="BookTitle.TLabel")
         self.book_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(14, 4))
 
-        self.panes = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        # Use a fixed grid rather than a draggable Panedwindow. This keeps the
+        # contents column independent of the reading column and prevents overlap.
+        self.panes = ttk.Frame(self)
         self.panes.pack(fill=tk.BOTH, expand=True, padx=10, pady=(8, 6))
-        self.left = ttk.Frame(self.panes, padding=10, style="Panel.TFrame")
+        self.panes.grid_rowconfigure(0, weight=1)
+        self.panes.grid_columnconfigure(0, weight=0, minsize=self.sidebar_target_width)
+        self.panes.grid_columnconfigure(1, weight=1)
+        self.left = ttk.Frame(self.panes, padding=10, style="Panel.TFrame", width=self.sidebar_target_width)
+        self.left.grid(row=0, column=0, sticky="nsew")
+        self.left.grid_propagate(False)
         self.right = ttk.Frame(self.panes, padding=12, style="Panel.TFrame")
-        # Keep the contents pane on the left; its width is fitted to the labels.
-        self.panes.add(self.left, weight=0)
-        self.panes.add(self.right, weight=1)
+        self.right.grid(row=0, column=1, sticky="nsew")
+        self.panes.bind("<Configure>", self._panes_configured, add="+")
         ttk.Label(self.left, text="CONTENTS", style="Heading.TLabel").pack(anchor="w", pady=(2, 10))
-        self.toc_tree = ttk.Treeview(self.left, show="tree", selectmode="browse")
-        toc_sb = ttk.Scrollbar(self.left, orient=tk.VERTICAL, command=self.toc_tree.yview)
+        self.toc_container = ttk.Frame(self.left, style="Panel.TFrame")
+        self.toc_container.pack(fill=tk.BOTH, expand=True)
+        self.toc_container.grid_rowconfigure(0, weight=1)
+        self.toc_container.grid_columnconfigure(0, weight=1)
+        self.toc_tree = ttk.Treeview(self.toc_container, show="tree", selectmode="browse")
+        toc_sb = ttk.Scrollbar(self.toc_container, orient=tk.VERTICAL, command=self.toc_tree.yview)
         self.toc_tree.configure(yscrollcommand=toc_sb.set)
-        self.toc_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        toc_sb.pack(side=tk.RIGHT, fill=tk.Y)
-        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)
+        self.toc_tree.grid(row=0, column=0, sticky="nsew")
+        toc_sb.grid(row=0, column=1, sticky="ns")
+        # This green control is on the sidebar's right edge, not over the page text.
+        self.sidebar_toggle = ttk.Button(
+            self.toc_container, text="◀", width=2, style="SidebarToggle.TButton",
+            command=self.toggle_sidebar,
+        )
+        self.sidebar_toggle.grid(row=0, column=2, sticky="ns", padx=(6, 0))
+        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)
         self.toc_tree.bind("<Button-1>", self._focus_contents_tree, add="+")
         # Mouse-wheel and arrow-key scrolling for the contents panel.
         self.toc_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event, self.toc_tree))
@@ -536,28 +571,34 @@ class Reader(tk.Tk):
         self.toc_tree.bind("<Up>", lambda event: self._on_scroll_arrow(event, self.toc_tree))
         self.toc_tree.bind("<Down>", lambda event: self._on_scroll_arrow(event, self.toc_tree))
 
-        self.sidebar_toggle = ttk.Button(self.right, text="◀", width=2, style="SidebarToggle.TButton",
-                                          command=self.toggle_sidebar)
-        # The button sits at the reading pane edge: beside the sidebar when open,
-        # and still reachable from the left edge when the sidebar is hidden.
-        self.sidebar_toggle.place(relx=0.0, rely=0.5, anchor="w", x=0)
-        self.heading = ttk.Label(self.right, text="Welcome", style="Heading.TLabel", font=("Sans", 16, "bold"), wraplength=700)
+        self.sidebar_reopen_toggle = ttk.Button(
+            self.right, text="▶", width=2, style="SidebarToggle.TButton",
+            command=self.toggle_sidebar,
+        )
+        self.sidebar_reopen_toggle.place_forget()
+        self.reader_body = ttk.Frame(self.right, style="Panel.TFrame")
+        self.reader_body.pack(fill=tk.BOTH, expand=True)
+        self.heading = ttk.Label(self.reader_body, text="Welcome"        self.heading = ttk.Label(self.right, text="Welcome", style="Heading.TLabel", font=("Sans", 16, "bold"), wraplength=700)
         self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12))
-        self.text_frame = tk.Frame(self.right, bg=DEFAULT_BG, bd=0, highlightthickness=0)
+        self.text_frame = tk.Frame(self.reader_body, bg=APP_BG, bd=0, highlightthickness=0)
         self.text_frame.pack(fill=tk.BOTH, expand=True)
-        self.text = tk.Text(self.text_frame, wrap=tk.WORD, padx=22, pady=20,
+        self.reading_area = tk.Frame(self.text_frame, bg=APP_BG, bd=0, highlightthickness=0)
+        self.reading_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.text_surface = tk.Frame(self.reading_area, bg=DEFAULT_BG, bd=0, highlightthickness=0)
+        self.text_surface.place(relx=0.5, rely=0, anchor="n", width=self.column_width, relheight=1)
+        self.text = tk.Text(self.text_surface, wrap=tk.WORD, padx=22, pady=20,
             font=(FONT_NAME, self.font_size), foreground=DEFAULT_FG, background=DEFAULT_BG,
             insertbackground=DEFAULT_FG, selectforeground=DEFAULT_BG, selectbackground=DEFAULT_FG,
             spacing1=0, spacing2=0, spacing3=0, relief=tk.FLAT, borderwidth=0,
             highlightthickness=0, state=tk.DISABLED, undo=False, takefocus=True)
+        self.text.pack(fill=tk.BOTH, expand=True)
         self._apply_line_spacing()
-        self.text.place(relx=0.5, rely=0, anchor="n", width=self.column_width, relheight=1)
         self._last_scroll_target = self.text
         self.text_scroll = ttk.Scrollbar(self.text_frame, orient=tk.VERTICAL, command=self.text.yview)
         self.text.configure(yscrollcommand=self._on_scroll)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.text_frame.bind("<Configure>", self._size_reading_column)
-        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
+        self.reading_area.bind("<Configure>", self._size_reading_column)
+        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")        self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
         self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
                                 spacing1=12, spacing3=10)
         self.text.bind("<KeyRelease>", lambda _e: self._schedule_progress_save())
@@ -738,9 +779,9 @@ class Reader(tk.Tk):
     def _size_reading_column(self, event):
         # Keep the comfortable ~700 px column in normal mode, but let it use
         # the available width in full-screen mode. Font size and spacing stay put.
-        available = max(200, event.width - 18)
+        available = max(200, event.width - 8)
         width = available if self.fullscreen_column else min(self.column_width, available)
-        self.text.place_configure(width=width)
+        self.text_surface.place_configure(width=width)
 
     def _update_progress(self):
         if not self.book or not self.chapter_marks:
@@ -766,54 +807,75 @@ class Reader(tk.Tk):
             pass
 
     def _ensure_toc_left(self):
-        """Restore pane order, keeping the contents panel on the left when visible."""
+        """Lay out the reading area beside a fixed-width, left-hand contents panel."""
         try:
-            existing = list(self.panes.panes())
-            if str(self.left) in existing:
-                self.panes.forget(self.left)
-            if str(self.right) in existing:
-                self.panes.forget(self.right)
-            if self.sidebar_visible:
-                self.panes.add(self.left, weight=0)
-            self.panes.add(self.right, weight=1)
+            self.panes.grid_rowconfigure(0, weight=1)
+            self.panes.grid_columnconfigure(1, weight=1)
             if self.sidebar_visible and not self.is_fullscreen:
-                self.after_idle(lambda: self.panes.sashpos(0, self.sidebar_target_width))
+                self.left.grid()
+                self.left.configure(width=self.sidebar_target_width)
+                self.panes.grid_columnconfigure(0, minsize=self.sidebar_target_width, weight=0)
+                self.sidebar_toggle.grid()
+                self.sidebar_reopen_toggle.place_forget()
+                self.reader_body.pack_configure(padx=0)
+            else:
+                self.left.grid_remove()
+                self.panes.grid_columnconfigure(0, minsize=0, weight=0)
+                if self.is_fullscreen:
+                    self.sidebar_toggle.grid_remove()
+                    self.sidebar_reopen_toggle.place_forget()
+                    self.reader_body.pack_configure(padx=0)
+                else:
+                    self.sidebar_reopen_toggle.place(relx=0.0, rely=0.5, anchor="w", x=0)
+                    self.reader_body.pack_configure(padx=(36, 0))
         except tk.TclError:
             pass
 
     def toggle_sidebar(self):
-        """Show or hide the contents pane without dragging the splitter."""
+        """Show or hide the contents panel using the green edge button."""
         if self.is_fullscreen:
             return
         self.sidebar_visible = not self.sidebar_visible
-        self.sidebar_toggle.configure(text="◀" if self.sidebar_visible else "▶")
         self._ensure_toc_left()
         if self.sidebar_visible:
             self.after_idle(self._fit_sidebar_to_contents)
-            self.after_idle(self._refresh_reading_column)
+        self.after_idle(self._refresh_reading_column)
+
+    def _panes_configured(self, _event=None):
+        """Re-fit the contents pane when the application window changes size."""
+        if self.book and self.sidebar_visible and not self.is_fullscreen:
+            self.after_idle(self._fit_sidebar_to_contents)
 
     def _fit_sidebar_to_contents(self):
-        """Size the contents pane to its widest chapter/page label, within sensible limits."""
+        """Fit the longest nested contents label while leaving space for reading."""
         if not hasattr(self, "toc_tree") or not self.book:
             return
         try:
             font = tkfont.Font(root=self, font=("Sans", 10))
-            widest = font.measure("CONTENTS")
-            def measure_items(parent=""):
-                nonlocal widest
+            widths = [font.measure("CONTENTS")]
+            indent_width = max(12, int(self.toc_tree.cget("indent")))
+
+            def measure_items(parent="", depth=0):
                 for item in self.toc_tree.get_children(parent):
-                    widest = max(widest, font.measure(self.toc_tree.item(item, "text")) + 24)
-                    measure_items(item)
+                    label = self.toc_tree.item(item, "text")
+                    widths.append(font.measure(label) + depth * indent_width)
+                    measure_items(item, depth + 1)
+
             measure_items()
-            target = max(230, min(460, widest + 46))
-            self.sidebar_target_width = target
-            self.left.configure(width=target)
-            self.toc_tree.column("#0", width=max(175, target - 55), minwidth=170, stretch=True)
-            if self.sidebar_visible and not self.is_fullscreen:
-                self.after_idle(lambda: self.panes.sashpos(0, self.sidebar_target_width))
+            available = max(260, int(self.panes.winfo_width()))
+            target = sidebar_width_for_labels(
+                widths, available_width=available,
+                minimum_width=250, reading_min_width=520, padding=72,
+            )
+            self.toc_tree.column("#0", width=max(165, target - 72), minwidth=160, stretch=True)
+            if target != self.sidebar_target_width:
+                self.sidebar_target_width = target
+                self.left.configure(width=target)
+                self.panes.grid_columnconfigure(
+                    0, minsize=target if self.sidebar_visible and not self.is_fullscreen else 0, weight=0
+                )
         except (tk.TclError, ValueError):
             pass
-
     def _highlight_toc_index(self, index):
         """Highlight the contents entry corresponding to the currently visible chapter."""
         self._setting_toc_selection = True
@@ -970,9 +1032,10 @@ class Reader(tk.Tk):
         self.fullscreen_column = True
         self.toolbar.pack_forget()
         self.panes.pack_configure(padx=0, pady=0)
-        if str(self.left) in list(self.panes.panes()):
-            self.panes.forget(self.left)
-        self.sidebar_toggle.place_forget()
+        self.left.grid_remove()
+        self.sidebar_toggle.grid_remove()
+        self.sidebar_reopen_toggle.place_forget()
+        self.reader_body.pack_configure(padx=0)
         self.heading.pack_forget()
         self.right.configure(padding=0)
         self.text.configure(padx=28, pady=24)
@@ -991,7 +1054,7 @@ class Reader(tk.Tk):
 
     def _refresh_reading_column(self):
         try:
-            self._size_reading_column(type("Event", (), {"width": self.text_frame.winfo_width()})())
+            self._size_reading_column(type("Event", (), {"width": self.reading_area.winfo_width()})())
         except tk.TclError:
             pass
 
@@ -1002,9 +1065,8 @@ class Reader(tk.Tk):
         self.fullscreen_column = False
         self._ensure_toc_left()
         self.panes.pack_configure(padx=10, pady=(8, 6))
-        self.sidebar_toggle.configure(text="◀" if self.sidebar_visible else "▶")
-        self.sidebar_toggle.place(relx=0.0, rely=0.5, anchor="w", x=0)
         self.right.configure(padding=6)
+        self._ensure_toc_left()
         self.heading.pack(fill=tk.X, anchor="w", pady=(0, 8), before=self.text_frame)
         self.text.configure(padx=22, pady=20)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
