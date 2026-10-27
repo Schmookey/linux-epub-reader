@@ -24,6 +24,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-epub-reader-deb
-          path: dist/linux-epub-reader_0.13.5-1_all.deb
+          path: dist/linux-epub-reader_0.13.6-1_all.deb
           if-no-files-found: error
           retention-days: 30
