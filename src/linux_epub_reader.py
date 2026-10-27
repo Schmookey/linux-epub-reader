@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.2 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.3 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.2"
+APP_VERSION = "0.13.3"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -172,6 +172,11 @@ def sidebar_width_for_labels(label_widths, available_width, minimum_width=250, r
     required = max([width for width in widths] + [0]) + extra
     maximum = max(minimum, available - keep_reading)
     return max(minimum, min(required, maximum))
+
+
+def fullscreen_hint_should_show(state, is_fullscreen):
+    """Whether to show the floating F11 hint for the current fullscreen session."""
+    return bool(is_fullscreen and not state.get("hide_fullscreen_hint", False))
 
 
 def chapter_progress_fraction(position_units, content_units, visible_units):
@@ -435,6 +440,12 @@ class Reader(tk.Tk):
         self.fullscreen_column = False
         migrate_legacy_state()
         self.state = self._load_state()
+        self.hide_fullscreen_hint_var = tk.BooleanVar(
+            value=bool(self.state.get("hide_fullscreen_hint", False))
+        )
+        self.show_fullscreen_hint_var = tk.BooleanVar(
+            value=not bool(self.state.get("hide_fullscreen_hint", False))
+        )
         self.current_key = None
         self.chapter_word_offsets = []
         self.chapter_marks = []
@@ -507,6 +518,11 @@ class Reader(tk.Tk):
         style.map("SidebarToggle.TButton",
                   background=[("pressed", "#6FAF2E"), ("active", "#9BDC59")],
                   foreground=[("active", "#17191C")])
+        style.configure("FullscreenHint.TFrame", background=PANEL_BG, relief="solid", borderwidth=1)
+        style.configure("FullscreenHint.TCheckbutton", background=PANEL_BG, foreground=DEFAULT_FG,
+                        font=("Sans", 9))
+        style.map("FullscreenHint.TCheckbutton",
+                  background=[("active", PANEL_BG)], foreground=[("active", DEFAULT_FG)])
         style.configure("Treeview", background=PANEL_BG, fieldbackground=PANEL_BG,
                         foreground=DEFAULT_FG, bordercolor=PANEL_BG, lightcolor=PANEL_BG,
                         darkcolor=PANEL_BG, rowheight=29, font=("Sans", 10), padding=(5, 3))
@@ -532,6 +548,17 @@ class Reader(tk.Tk):
         ttk.Button(self.toolbar, text="Full-screen (F11)", command=self.toggle_fullscreen).pack(side=tk.LEFT, padx=(10, 0))
         self.book_label = ttk.Label(self.toolbar, text="No book open", style="BookTitle.TLabel")
         self.book_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(14, 4))
+
+        # The View menu makes the fullscreen hint preference reversible later.
+        menubar = tk.Menu(self)
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_checkbutton(
+            label="Show full-screen exit hint",
+            variable=self.show_fullscreen_hint_var,
+            command=self._set_fullscreen_hint_from_menu,
+        )
+        menubar.add_cascade(label="View", menu=view_menu)
+        self.configure(menu=menubar)
 
         # Use a fixed grid rather than a draggable Panedwindow. This keeps the
         # contents column independent of the reading column and prevents overlap.
@@ -611,6 +638,19 @@ class Reader(tk.Tk):
         # The reader is read-only, so provide explicit Up/Down scrolling while it has focus.
         self.text.bind("<Up>", lambda event: self._on_scroll_arrow(event, self.text))
         self.text.bind("<Down>", lambda event: self._on_scroll_arrow(event, self.text))
+
+        # A floating, optional F11 reminder sits over the lower edge of the reading pane.
+        self.fullscreen_hint = ttk.Frame(self.reader_body, padding=(10, 7), style="FullscreenHint.TFrame")
+        ttk.Button(
+            self.fullscreen_hint, text="F11 · Exit full-screen",
+            style="SidebarToggle.TButton", command=self.exit_fullscreen,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(
+            self.fullscreen_hint, text="Don't show this again",
+            style="FullscreenHint.TCheckbutton", variable=self.hide_fullscreen_hint_var,
+            command=self._set_fullscreen_hint_from_checkbox,
+        ).pack(side=tk.LEFT)
+        self.fullscreen_hint.place_forget()
 
         self.bottom = ttk.Frame(self, padding=(12, 7, 12, 10), style="Toolbar.TFrame")
         self.bottom.pack(fill=tk.X)
@@ -1052,6 +1092,7 @@ class Reader(tk.Tk):
         self.bottom.pack_configure(fill=tk.X, padx=0, pady=0)
         self.attributes("-fullscreen", True)
         self.after_idle(self._refresh_reading_column)
+        self.after_idle(self._update_fullscreen_hint)
 
     def _refresh_reading_column(self):
         try:
@@ -1059,8 +1100,39 @@ class Reader(tk.Tk):
         except tk.TclError:
             pass
 
+    def _update_fullscreen_hint(self):
+        """Show the floating F11 control only when fullscreen and not opted out."""
+        if fullscreen_hint_should_show(self.state, self.is_fullscreen):
+            self.fullscreen_hint.place(relx=0.5, rely=1.0, anchor="s", y=-22)
+            self.fullscreen_hint.lift()
+        else:
+            self.fullscreen_hint.place_forget()
+
+    def _set_fullscreen_hint_from_checkbox(self):
+        """Persist the checkbox choice and sync the reversible View-menu preference."""
+        hide = bool(self.hide_fullscreen_hint_var.get())
+        self.show_fullscreen_hint_var.set(not hide)
+        self.state["hide_fullscreen_hint"] = hide
+        try:
+            self._save_state()
+        except OSError:
+            pass
+        self._update_fullscreen_hint()
+
+    def _set_fullscreen_hint_from_menu(self):
+        """Allow the user to restore the fullscreen hint from View after hiding it."""
+        show = bool(self.show_fullscreen_hint_var.get())
+        self.hide_fullscreen_hint_var.set(not show)
+        self.state["hide_fullscreen_hint"] = not show
+        try:
+            self._save_state()
+        except OSError:
+            pass
+        self._update_fullscreen_hint()
+
     def exit_fullscreen(self):
         if not self.is_fullscreen: return
+        self.fullscreen_hint.place_forget()
         self.attributes("-fullscreen", False)
         self.is_fullscreen = False
         self.fullscreen_column = False
