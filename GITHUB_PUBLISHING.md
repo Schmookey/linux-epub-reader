@@ -18,7 +18,7 @@ On Linux Mint or Debian, make sure dpkg-deb, Python 3 and Tkinter are available.
 
     bash scripts/build-deb.sh
 
-The generated package is dist/linux-epub-reader_0.13.0-1_all.deb. The dist directory is excluded from Git so generated packages are not accidentally committed.
+The generated package is dist/linux-epub-reader_0.13.1-1_all.deb. The dist directory is excluded from Git so generated packages are not accidentally committed.
 
 ## Before a public release
 
