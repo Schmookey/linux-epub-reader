@@ -562,7 +562,7 @@ class Reader(tk.Tk):
             command=self.toggle_sidebar,
         )
         self.sidebar_toggle.grid(row=0, column=2, sticky="ns", padx=(6, 0))
-        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)
+        self.toc_tree.bind("<<TreeviewSelect>>", self._toc_selected)
         self.toc_tree.bind("<Button-1>", self._focus_contents_tree, add="+")
         # Mouse-wheel and arrow-key scrolling for the contents panel.
         self.toc_tree.bind("<MouseWheel>", lambda event: self._on_mousewheel(event, self.toc_tree))
@@ -578,7 +578,7 @@ class Reader(tk.Tk):
         self.sidebar_reopen_toggle.place_forget()
         self.reader_body = ttk.Frame(self.right, style="Panel.TFrame")
         self.reader_body.pack(fill=tk.BOTH, expand=True)
-        self.heading = ttk.Label(self.reader_body, text="Welcome"        self.heading = ttk.Label(self.right, text="Welcome", style="Heading.TLabel", font=("Sans", 16, "bold"), wraplength=700)
+        self.heading = ttk.Label(self.reader_body, text="Welcome", style="Heading.TLabel", font=("Sans", 16, "bold"), wraplength=700)
         self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12))
         self.text_frame = tk.Frame(self.reader_body, bg=APP_BG, bd=0, highlightthickness=0)
         self.text_frame.pack(fill=tk.BOTH, expand=True)
