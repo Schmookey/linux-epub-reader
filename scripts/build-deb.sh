@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PKGROOT="$ROOT/build/package"
-VERSION="0.13.6-1"
+VERSION="0.13.6-2"
 PKG="linux-epub-reader"
 rm -rf "$PKGROOT"
 install -d "$PKGROOT/DEBIAN" "$PKGROOT/usr/lib/linux-epub-reader/src" "$PKGROOT/usr/bin" "$PKGROOT/usr/share/applications" "$PKGROOT/usr/share/icons/hicolor/scalable/apps"
@@ -32,5 +32,5 @@ Description: Local-first dark-mode EPUB reader
  Protected books show a local notice; no external reader is launched.
 EOF_CONTROL
 mkdir -p "$ROOT/dist"
-dpkg-deb --root-owner-group --build "$PKGROOT" "$ROOT/dist/${PKG}_${VERSION}_all.deb"
+dpkg-deb --root-owner-group --compression=gzip --build "$PKGROOT" "$ROOT/dist/${PKG}_${VERSION}_all.deb"
 echo "Built: $ROOT/dist/${PKG}_${VERSION}_all.deb"
