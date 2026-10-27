@@ -2,7 +2,7 @@
 Type=Application
 Name=Linux EPUB Reader
 Comment=Read EPUB books offline
-Exec=linux-epub-reader
+Exec=linux-epub-reader %f
 Icon=linux-epub-reader
 Terminal=false
 Categories=Office;Viewer;
