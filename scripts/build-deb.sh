@@ -32,5 +32,5 @@ Description: Local-first dark-mode EPUB reader
  Protected books show a local notice; no external reader is launched.
 EOF_CONTROL
 mkdir -p "$ROOT/dist"
-dpkg-deb --root-owner-group --compression=gzip --build "$PKGROOT" "$ROOT/dist/${PKG}_${VERSION}_all.deb"
+dpkg-deb --root-owner-group -Z gzip --build "$PKGROOT" "$ROOT/dist/${PKG}_${VERSION}_all.deb"
 echo "Built: $ROOT/dist/${PKG}_${VERSION}_all.deb"
