@@ -8,9 +8,11 @@ Launch Linux EPUB Reader from your desktop menu, or run python3 src/linux_epub_r
 
 All chapter text is placed in one continuous reading pane, separated by chapter headings. Scroll down to continue into the next chapter; you do not need to select each chapter in the contents. The bottom green progress bar shows your position within the active chapter, from 0% to 100%. It resets when the next chapter becomes active. The active chapter is highlighted in the contents panel.
 
-## Contents panel
+## Contents panel layout
 
-The nested contents panel stays on the left. Its width is calculated from chapter names and estimated page counts, within a maximum width so an exceptionally long title does not take over the window. Use the Mint-green arrow button on the right edge of the panel to hide it; use the arrow at the same edge of the reading area to restore it. You do not need to drag the divider.
+The contents panel stays on the left, and the reading page occupies the separate right-hand column. The layout does not use a draggable splitter, so the text page should not slide underneath the contents.
+
+The sidebar measures its longest nested chapter label, including the estimated page-count text, and sizes itself to fit when there is enough window space. It leaves a minimum width for the reading area when the window is narrower than the longest title. Use the Mint-green arrow button on the sidebar's right edge to hide it. When hidden, a matching green arrow appears at the left edge of the reading area to restore it.
 
 ## Scrolling and full-screen
 
