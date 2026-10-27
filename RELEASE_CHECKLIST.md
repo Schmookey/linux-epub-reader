@@ -13,3 +13,4 @@
 - [ ] Verify saved positions/bookmarks on the user's machine after upgrade.
 - [ ] Adobe DRM remains unimplemented in-app until a licensed compatible engine is available.
 - [ ] Review the selected CC BY-NC-SA 4.0 licence for software-distribution suitability.
+\n- [x] DRM-protected and unsupported files show a local notice without launching another application.\n- [x] No subprocess, Wine, Thorium or Adobe Digital Editions hand-off code remains in the reader.\n
