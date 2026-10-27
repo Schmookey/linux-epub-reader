@@ -11,8 +11,8 @@ finish-args:
   - --filesystem=home:ro
   # Keep reading-state writes limited to the application's existing state directory.
   - --filesystem=~/.local/share/linux-epub-reader:create
-  - --env=TCL_LIBRARY=/app/lib/tcl9.0
-  - --env=TK_LIBRARY=/app/lib/tk9.0
+  - --env=TCL_LIBRARY=/app/lib/tcl8.6
+  - --env=TK_LIBRARY=/app/lib/tk8.6
 
 modules:
   - name: tkinter
@@ -32,29 +32,26 @@ modules:
         config-opts:
           - --enable-threads
           - --enable-shared
-          - --disable-zipfs
         post-install:
-          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9.0.so
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl8.6.so
           - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tcl/LICENSE
         sources:
           - type: archive
-            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.2-src.tar.gz
-            sha256: e074c6a8d9ba2cddf914ba97b6677a552d7a52a3ca102924389a05ccb249b520
+            url: https://prdownloads.sourceforge.net/tcl/tcl8.6.12-src.tar.gz
+            sha256: 26c995dd0f167e48b11961d891ee555f680c175f7173ff8cb829f4ebcde4c1a6
       - name: tk
         buildsystem: autotools
         subdir: unix
         config-opts:
           - --enable-threads
           - --enable-shared
-          - --disable-zipfs
         post-install:
-          - chmod +w ${FLATPAK_DEST}/lib/libtcl9tk9.0.so
-          - ln -sf /app/bin/wish9.0 /app/bin/wish
+          - chmod 755 ${FLATPAK_DEST}/lib/libtk8.6.so
           - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tk/LICENSE
         sources:
           - type: archive
-            url: https://prdownloads.sourceforge.net/tcl/tk9.0.2-src.tar.gz
-            sha256: 76fb852b2f167592fe8b41aa6549ce4e486dbf3b259a269646600e3894517c76
+            url: https://prdownloads.sourceforge.net/tcl/tk8.6.12-src.tar.gz
+            sha256: 12395c1f3fcb6bed2938689f797ea3cdf41ed5cb6c4766eec8ac949560310630
 
   - name: linux-epub-reader
     buildsystem: simple
