@@ -35,3 +35,7 @@ Run from a terminal to see diagnostic messages:
     python3 src/linux_epub_reader.py
 
 Do not upload commercial books, DRM licence files, credentials or private keys to public issues.
+
+## Full-screen exit hint
+
+When you enter full-screen with F11, a small Mint-green **F11 · Exit full-screen** button appears near the bottom of the reading panel. Click it to leave full-screen. The checkbox beside it, **Don't show this again**, saves your choice locally and hides the hint on later full-screen sessions. You can restore it at any time from the **View → Show full-screen exit hint** menu. The keyboard shortcuts F11 and Esc continue to work even when the hint is hidden.
