@@ -1,12 +1,5 @@
 #!/bin/sh
 set -eu
-# Tkinter is installed into /app/lib/pythonX.Y/site-packages by the Flatpak build.
-for site_dir in /app/lib/python*/site-packages; do
-    if [ -d "$site_dir" ]; then
-        PYTHONPATH="$site_dir${PYTHONPATH:+:$PYTHONPATH}"
-    fi
-done
-export PYTHONPATH
 export TCL_LIBRARY="${TCL_LIBRARY:-/app/lib/tcl8.6}"
 export TK_LIBRARY="${TK_LIBRARY:-/app/lib/tk8.6}"
-exec /usr/bin/python3 /app/lib/linux-epub-reader/linux_epub_reader.py "$@"
+exec /app/bin/python3.13 /app/lib/linux-epub-reader/linux_epub_reader.py "$@"
