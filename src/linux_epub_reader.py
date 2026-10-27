@@ -28,25 +28,24 @@ LEGACY_STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "min
 DEFAULT_BG = "#000000"
 DEFAULT_FG = "#E0E0E0"
 FONT_NAME = "Atkinson Hyperlegible"
-WELCOME_TEXT = (
-    "Welcome to Linux EPUB Reader"
-    +     ""
-    +     "Linux EPUB Reader is a simple, offline EPUB reader. Open an EPUB file to read it in one continuous reading panel. Use the Contents panel to move between chapters, Search to find text, and Bookmarks to save places you want to return to. Press F11 for full-screen reading and Esc to return."
-    +     ""
-    +     "The app uses Atkinson Hyperlegible in a dark theme, with light text on a black background. You can adjust the text size."
-    +     ""
-    +     "What is saved?"
-    +     "The app saves the book's file location, your current chapter and approximate reading position. When you add a bookmark, it saves its name, chapter and position. Your saved information is updated as you read and when you close the app."
-    +     ""
-    +     "Where is it saved?"
-    +     "Your reading information is kept in a local file on your computer:"
-    +     "~/.local/share/linux-epub-reader/reading_state.json"
-    +     "The file contains reading information, not a copy of the book's text."
-    +     ""
-    +     "Privacy and GDPR"
-    +     "The app is designed to minimise personal data. Reading positions, bookmarks and preferences stay on your computer. There are no accounts, cloud services, analytics or reading-history uploads. The app does not send this information to the developer or other services."
-    +     "This describes how the application handles data and its privacy-focused design; it is not a blanket legal certification of GDPR compliance."
-)
+WELCOME_TEXT = """Welcome to Linux EPUB Reader
+
+Linux EPUB Reader is a simple, offline EPUB reader. Open an EPUB file to read it in one continuous reading panel. Use the Contents panel to move between chapters, Search to find text, and Bookmarks to save places you want to return to. Press F11 for full-screen reading and Esc to return.
+
+The app uses Atkinson Hyperlegible in a dark theme, with light text on a black background. You can adjust the text size.
+
+What is saved?
+The app saves the book's file location, your current chapter and approximate reading position. When you add a bookmark, it saves its name, chapter and position. Your saved information is updated as you read and when you close the app.
+
+Where is it saved?
+Your reading information is kept in a local file on your computer:
+~/.local/share/linux-epub-reader/reading_state.json
+The file contains reading information, not a copy of the book's text.
+
+Privacy and GDPR
+The app is designed to minimise personal data. Reading positions, bookmarks and preferences stay on your computer. There are no accounts, cloud services, analytics or reading-history uploads. The app does not send this information to the developer or other services.
+
+This describes how the application handles data and its privacy-focused design; it is not a blanket legal certification of GDPR compliance."""
 CONTAINER = "META-INF/container.xml"
 FONT_OBFUSCATION_ALGORITHMS = {
     "http://www.idpf.org/2008/embedding",
