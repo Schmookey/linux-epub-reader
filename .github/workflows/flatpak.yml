@@ -46,7 +46,7 @@ jobs:
       - name: Install Flatpak build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11
+          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 python3-tk
 
       - name: Add Flathub remote and install the build runtime
         run: |
