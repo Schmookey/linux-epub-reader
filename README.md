@@ -7,9 +7,9 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 ## Features
 
 - Continuous chapter scrolling: all chapters appear in one reading pane, so you can carry on scrolling instead of selecting each chapter separately.
-- Chapter progress from 0% to 100%: the bottom green progress bar and percentage refer to the chapter currently at the top of the reading view. The percentage resets when the next chapter becomes active.
-- Left-hand nested table of contents, current-chapter highlighting and estimated page counts.
-- Sidebar automatically sizes to chapter labels and estimated page counts, within sensible limits. A Mint-green arrow at the right edge of the sidebar hides or restores it without dragging a splitter.
+- Chapter progress from 0% to 100%: the green progress bar and percentage refer to the chapter currently at the top of the reading view. The percentage resets when the next chapter becomes active.
+- Left-hand nested contents with current-chapter highlighting and estimated page counts.
+- The sidebar width is calculated from the widest chapter/page label, with a cap based on available window width so the reading area remains usable. A Mint-green arrow on the sidebar's right edge opens/closes it; no dragging of a divider is required.
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
 - Full-screen reading (F11; Esc to exit), mouse-wheel and Up/Down keyboard scrolling.
 - Book metadata, search, bookmarks and saved reading positions.
@@ -18,17 +18,16 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 ## Current limitations
 
 - This is a text-oriented EPUB reader, not a full browser-grade EPUB renderer. Publisher CSS, illustrations, tables, embedded media, fixed-layout publications and some complex layouts are not rendered faithfully.
-- Adobe DRM is not implemented inside this application. The app can detect protected files and, displays an explanatory notice and stops. It never launches Adobe Digital Editions, Wine, Thorium Reader, a PDF reader or any other external application for protected or unsupported files.
+- Adobe DRM is not implemented inside this application. It detects protected files, displays an explanatory notice and stops. It never launches Adobe Digital Editions, Wine, Thorium Reader, a PDF reader or any other external application for protected or unsupported files.
 - ACSM files are download/fulfilment instructions, not book contents. This application does not fulfil them or contact a publisher.
 - Readium LCP-protected files are identified and explained in a notice; no external reader is launched.
 - Chapter page counts are estimates unless a publication provides page markers.
-- Automated tests are included, and a three-chapter virtual-desktop smoke test passed during this update. That smoke test is not yet part of the committed automated suite; please test on a real Linux Mint desktop before relying on the reader for important books.
+- Automated tests are included. Please test on a real Linux Mint desktop before relying on the reader for important books.
 
 ## Requirements
 
 - Linux desktop with Python 3 and Tkinter (python3, python3-tk).
 - Optional: fonts-atkinson-hyperlegible for the preferred typeface. The reader falls back to available fonts if it is absent.
-- No external reader is required or launched. DRM-protected EPUBs and PDFs remain unreadable in-app until an authorised engine is integrated.
 
 The app uses Python's standard library and Tkinter; no third-party Python package is required.
 
@@ -37,8 +36,6 @@ The app uses Python's standard library and Tkinter; no third-party Python packag
 From the repository root, run:
 
     python3 src/linux_epub_reader.py
-
-Open a book using Open book or press Ctrl+O. For keyboard shortcuts and usage, see docs/USER_GUIDE.md.
 
 Run tests:
 
@@ -50,9 +47,9 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
     bash scripts/build-deb.sh
 
-The output is dist/linux-epub-reader_0.13.1-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.2-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.0-1_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.2-1_all.deb
 
 ## Local data and offline behaviour
 
