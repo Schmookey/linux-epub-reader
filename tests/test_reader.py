@@ -93,6 +93,14 @@ class SidebarWidthTests(unittest.TestCase):
         self.assertEqual(result, 380)
 
 
+class WelcomePageTests(unittest.TestCase):
+    def test_welcome_explains_features_local_storage_and_offline_privacy(self):
+        self.assertIn("Welcome to Linux EPUB Reader", reader.WELCOME_TEXT)
+        self.assertIn("reading_state.json", reader.WELCOME_TEXT)
+        self.assertIn("There are no accounts, cloud services, analytics or reading-history uploads", reader.WELCOME_TEXT)
+        self.assertIn("not a blanket legal certification of GDPR compliance", reader.WELCOME_TEXT)
+
+
 class FullscreenLayoutTests(unittest.TestCase):
     def test_fullscreen_has_zero_sidebar_column_when_contents_was_open(self):
         self.assertEqual(reader.sidebar_column_minimum(True, True, 340), 0)
