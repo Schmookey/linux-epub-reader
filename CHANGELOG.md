@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.7-1 — Practical welcome and privacy information
+
+- Replace the welcome page with a practical description of reading, contents navigation, search, bookmarks and full-screen controls.
+- Explain which reading information is saved, where the local state file is stored, and that the app does not upload reading history.
+- Describe the app's privacy-focused design without claiming blanket legal certification of GDPR compliance.
+- Reaffirm that the app and future features remain offline-only; no cloud implementation is planned.
+
 ## 0.13.3-1 — Optional full-screen exit hint
 
 - Show a floating Mint-green “F11 · Exit full-screen” button near the bottom of the reading panel.
