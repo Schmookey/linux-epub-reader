@@ -1,4 +1,4 @@
-name: Tests
+name: Tests and Debian package
 
 on:
   push:
@@ -14,5 +14,16 @@ jobs:
           python-version: "3.x"
       - name: Check Python syntax
         run: python -m py_compile src/linux_epub_reader.py tests/test_reader.py
+      - name: Check build script syntax
+        run: bash -n scripts/build-deb.sh
       - name: Run tests
         run: python -m unittest discover -s tests -v
+      - name: Build Debian package
+        run: bash scripts/build-deb.sh
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-epub-reader-deb
+          path: dist/linux-epub-reader_0.13.2-1_all.deb
+          if-no-files-found: error
+          retention-days: 30
