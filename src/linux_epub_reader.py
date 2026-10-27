@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Linux EPUB Reader v0.12.1 — offline-first, dark EPUB reader with Linux Mint accents.
+# SPDX-License-Identifier: CC-BY-NC-SA-4.0
+"""Linux EPUB Reader v0.13.0 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -14,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.12.1"
+APP_VERSION = "0.13.0"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -180,6 +181,27 @@ def lname(tag):
 
 def clean_text(value):
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def chapter_progress_fraction(position_units, content_units, visible_units):
+    """Normalise a viewport position to 0..1 within one chapter.
+
+    Position and length are measured in display lines. A chapter shorter than
+    the viewport is considered fully visible; otherwise the last scrollable
+    position maps to 100 percent.
+    """
+    try:
+        content = max(0, int(content_units))
+        visible = max(0, int(visible_units))
+        position = max(0, int(position_units))
+    except (TypeError, ValueError):
+        return 0.0
+    if content == 0:
+        return 0.0
+    if content <= visible:
+        return 1.0
+    scrollable = max(1, content - visible)
+    return max(0.0, min(1.0, position / scrollable))
 
 
 class TextExtractor(HTMLParser):
@@ -422,6 +444,10 @@ class Reader(tk.Tk):
         self.state = self._load_state()
         self.current_key = None
         self.chapter_word_offsets = []
+        self.chapter_marks = []
+        self.rendered_book_key = None
+        self.sidebar_visible = True
+        self.sidebar_target_width = 270
         self._toc_items = {}
         self._setting_toc_selection = False
         self._search_results = []
@@ -482,6 +508,12 @@ class Reader(tk.Tk):
                         thickness=7, relief="flat")
         style.map("LinuxEPUB.Horizontal.TProgressbar",
                   background=[("disabled", self.mint_green), ("!disabled", self.mint_green)])
+        style.configure("SidebarToggle.TButton", background=MINT_GREEN, foreground="#17191C",
+                        bordercolor=MINT_GREEN, lightcolor=MINT_GREEN, darkcolor=MINT_GREEN,
+                        padding=(5, 8), relief="flat", font=("Sans", 10, "bold"))
+        style.map("SidebarToggle.TButton",
+                  background=[("pressed", "#6FAF2E"), ("active", "#9BDC59")],
+                  foreground=[("active", "#17191C")])
         style.configure("Treeview", background=PANEL_BG, fieldbackground=PANEL_BG,
                         foreground=DEFAULT_FG, bordercolor=PANEL_BG, lightcolor=PANEL_BG,
                         darkcolor=PANEL_BG, rowheight=29, font=("Sans", 10), padding=(5, 3))
@@ -512,9 +544,9 @@ class Reader(tk.Tk):
         self.panes.pack(fill=tk.BOTH, expand=True, padx=10, pady=(8, 6))
         self.left = ttk.Frame(self.panes, padding=10, style="Panel.TFrame")
         self.right = ttk.Frame(self.panes, padding=12, style="Panel.TFrame")
-        # Add panes in a fixed order: contents first, reading view second.
-        self.panes.add(self.left, weight=1)
-        self.panes.add(self.right, weight=4)
+        # Keep the contents pane on the left; its width is fitted to the labels.
+        self.panes.add(self.left, weight=0)
+        self.panes.add(self.right, weight=1)
         ttk.Label(self.left, text="CONTENTS", style="Heading.TLabel").pack(anchor="w", pady=(2, 10))
         self.toc_tree = ttk.Treeview(self.left, show="tree", selectmode="browse")
         toc_sb = ttk.Scrollbar(self.left, orient=tk.VERTICAL, command=self.toc_tree.yview)
@@ -530,6 +562,11 @@ class Reader(tk.Tk):
         self.toc_tree.bind("<Up>", lambda event: self._on_scroll_arrow(event, self.toc_tree))
         self.toc_tree.bind("<Down>", lambda event: self._on_scroll_arrow(event, self.toc_tree))
 
+        self.sidebar_toggle = ttk.Button(self.right, text="◀", width=2, style="SidebarToggle.TButton",
+                                          command=self.toggle_sidebar)
+        # The button sits at the reading pane edge: beside the sidebar when open,
+        # and still reachable from the left edge when the sidebar is hidden.
+        self.sidebar_toggle.place(relx=0.0, rely=0.5, anchor="w", x=0)
         self.heading = ttk.Label(self.right, text="Welcome", style="Heading.TLabel", font=("Sans", 16, "bold"), wraplength=700)
         self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12))
         self.text_frame = tk.Frame(self.right, bg=DEFAULT_BG, bd=0, highlightthickness=0)
@@ -547,6 +584,8 @@ class Reader(tk.Tk):
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.text_frame.bind("<Configure>", self._size_reading_column)
         self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
+        self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
+                                spacing1=12, spacing3=10)
         self.text.bind("<KeyRelease>", lambda _e: self._schedule_progress_save())
         self.text.bind("<Button-1>", self._focus_reading_text)
         self.text.bind("<ButtonRelease-1>", lambda _e: self._schedule_progress_save())
@@ -562,11 +601,11 @@ class Reader(tk.Tk):
         self.bottom.pack(fill=tk.X)
         self.status = ttk.Label(self.bottom, text="Open an EPUB to begin.", style="Muted.TLabel")
         self.status.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.progress_percent = ttk.Label(self.bottom, text="0%", width=5, anchor="e", style="Panel.TLabel")
+        self.progress_percent = ttk.Label(self.bottom, text="0% of chapter", width=13, anchor="e", style="Panel.TLabel")
         self.progress_percent.pack(side=tk.RIGHT, padx=(10, 0))
         self.progress = ttk.Progressbar(self.bottom, style="LinuxEPUB.Horizontal.TProgressbar", orient=tk.HORIZONTAL, mode="determinate", maximum=100, length=240)
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
-        self.set_text("Welcome to Linux EPUB Reader\n\nOpen an EPUB to begin. The reader uses the book’s own navigation when available, remembers your reading position and bookmarks, supports searching, and shows whole-book progress. Press F11 for distraction-free full-screen reading; the green progress bar remains at the bottom. Chapter page counts are estimates unless the publication supplies page markers.\n\nReading defaults: Atkinson Hyperlegible 11 pt, soft-white text on black, approximately 1.5× line spacing, and a medium-width reading column.")
+        self.set_text("Welcome to Linux EPUB Reader\n\nOpen an EPUB to begin. Chapters flow continuously in one reading pane, and the green progress bar reports your position within the current chapter from 0% to 100%. Use the contents panel to jump to a chapter, or the Mint-green arrow on the panel edge to hide or restore it. Press F11 for distraction-free full-screen reading. Chapter page counts are estimates unless the publication supplies page markers.\n\nReading defaults: Atkinson Hyperlegible 11 pt, soft-white text on black, approximately 1.5× line spacing, and a medium-width reading column.")
 
     def _focus_reading_text(self, _event=None):
         """Allow the read-only reading view to receive Up/Down keyboard scrolling."""
@@ -656,19 +695,73 @@ class Reader(tk.Tk):
         self.after(120, self._update_progress)
 
     def _raw_scroll_fraction(self):
-        try: return max(0.0, min(1.0, float(self.text.yview()[0])))
-        except Exception: return 0.0
+        """Return the saved position as a 0..1 fraction within the active chapter."""
+        return self._chapter_fraction()
+
+    def _text_count(self, first, last, unit="displaylines"):
+        """Count Tk Text units between two indices, returning zero on unsupported builds."""
+        try:
+            result = self.text.count(first, last, unit)
+            return int(result[0]) if result else 0
+        except (tk.TclError, TypeError, ValueError):
+            return 0
+
+    def _visible_chapter_index(self):
+        """Find the chapter whose start is closest before the top visible text index."""
+        if not self.book or not self.chapter_marks:
+            return 0
+        try:
+            top = self.text.index("@1,1")
+            active = 0
+            for i, marks in enumerate(self.chapter_marks):
+                if self.text.compare(top, ">=", marks["start"]):
+                    active = i
+                else:
+                    break
+            return max(0, min(len(self.book.chapters) - 1, active))
+        except tk.TclError:
+            return self.index
 
     def _chapter_fraction(self):
-        """Normalised reading position through the scrollable chapter (0..1)."""
-        try:
-            first, last = self.text.yview()
-            scrollable = 1.0 - (last - first)
-            if scrollable <= 0.001:
-                return 0.0
-            return max(0.0, min(1.0, float(first) / scrollable))
-        except Exception:
+        """Calculate scroll position within the active chapter, normalised 0..1."""
+        if not self.book or not self.chapter_marks or not (0 <= self.index < len(self.chapter_marks)):
             return 0.0
+        marks = self.chapter_marks[self.index]
+        try:
+            top = self.text.index("@1,1")
+            start, end = marks["start"], marks["end"]
+            if self.text.compare(top, "<=", start):
+                position_lines = 0
+            elif self.text.compare(top, ">=", end):
+                position_lines = self._text_count(start, end, "displaylines")
+            else:
+                position_lines = self._text_count(start, top, "displaylines")
+            chapter_lines = max(1, self._text_count(start, end, "displaylines"))
+            height = max(2, self.text.winfo_height() - 3)
+            bottom_visible = self.text.index(f"@1,{height}")
+            visible_lines = max(1, self._text_count(top, bottom_visible, "displaylines"))
+            return chapter_progress_fraction(position_lines, chapter_lines, visible_lines)
+        except (tk.TclError, TypeError, ValueError):
+            try:
+                first, last = self.text.yview()
+                scrollable = 1.0 - (last - first)
+                return 1.0 if scrollable <= 0.001 else max(0.0, min(1.0, float(first) / scrollable))
+            except Exception:
+                return 0.0
+
+    def _goto_chapter_fraction(self, index, fraction):
+        """Move the continuous reading pane to a saved 0..1 position in one chapter."""
+        if not self.book or not self.chapter_marks or not (0 <= index < len(self.chapter_marks)):
+            return
+        marks = self.chapter_marks[index]
+        fraction = max(0.0, min(1.0, float(fraction)))
+        chars = self._text_count(marks["start"], marks["end"], "chars")
+        try:
+            self.text.yview(f"{marks['start']} + {int(chars * fraction)} chars")
+        except tk.TclError:
+            self.text.yview(marks["start"])
+
+    def _size_reading_column(self, event):
 
     def _size_reading_column(self, event):
         # Keep the comfortable ~700 px column in normal mode, but let it use
@@ -678,39 +771,92 @@ class Reader(tk.Tk):
         self.text.place_configure(width=width)
 
     def _update_progress(self):
-        if not self.book:
+        if not self.book or not self.chapter_marks:
             return
-        weights = [max(1, ch["words"]) for ch in self.book.chapters]
-        total = sum(weights) or 1
-        before = sum(weights[:self.index])
+        visible_index = self._visible_chapter_index()
+        if visible_index != self.index:
+            self.index = visible_index
+            self.heading.configure(text=self.book.chapters[self.index]["title"])
+            self._highlight_toc_index(self.index)
         fraction = self._chapter_fraction()
-        progress = max(0.0, min(1.0, (before + weights[self.index] * fraction) / total))
-        percent = int(progress * 100 + 0.5)
+        percent = int(max(0.0, min(1.0, fraction)) * 100 + 0.5)
         self.progress["value"] = percent
-        self.progress_percent.configure(text=f"{percent}%")
+        self.progress_percent.configure(text=f"{percent}% of chapter")
         st = self._book_state()
         st["chapter"] = self.index
-        st["fraction"] = self._raw_scroll_fraction()
+        st["fraction"] = fraction
         st["path"] = self.book.path
-        self.status.configure(text=f"Chapter {self.index+1} of {len(self.book.chapters)}  •  {self.book.estimate_pages(self.book.chapters[self.index], self.font_size, self.column_width, self.line_spacing)} estimated pages in this chapter")
-        try: self._save_state()
-        except OSError: pass
+        pages = self.book.estimate_pages(self.book.chapters[self.index], self.font_size, self.column_width, self.line_spacing)
+        self.status.configure(text=f"Chapter {self.index+1} of {len(self.book.chapters)}  •  {percent}% read  •  {pages} estimated pages in this chapter")
+        try:
+            self._save_state()
+        except OSError:
+            pass
 
     def _ensure_toc_left(self):
-        """Enforce a stable left-to-right pane order whenever the contents are visible."""
+        """Restore pane order, keeping the contents panel on the left when visible."""
         try:
-            # Rebuild the order explicitly; never rely on a prior sash or insertion order.
             existing = list(self.panes.panes())
             if str(self.left) in existing:
                 self.panes.forget(self.left)
             if str(self.right) in existing:
                 self.panes.forget(self.right)
-            self.panes.add(self.left, weight=1)
-            self.panes.add(self.right, weight=4)
-            if not self.is_fullscreen:
-                self.after_idle(lambda: self.panes.sashpos(0, 270))
+            if self.sidebar_visible:
+                self.panes.add(self.left, weight=0)
+            self.panes.add(self.right, weight=1)
+            if self.sidebar_visible and not self.is_fullscreen:
+                self.after_idle(lambda: self.panes.sashpos(0, self.sidebar_target_width))
         except tk.TclError:
             pass
+
+    def toggle_sidebar(self):
+        """Show or hide the contents pane without dragging the splitter."""
+        if self.is_fullscreen:
+            return
+        self.sidebar_visible = not self.sidebar_visible
+        self.sidebar_toggle.configure(text="◀" if self.sidebar_visible else "▶")
+        self._ensure_toc_left()
+        if self.sidebar_visible:
+            self.after_idle(self._fit_sidebar_to_contents)
+            self.after_idle(self._refresh_reading_column)
+
+    def _fit_sidebar_to_contents(self):
+        """Size the contents pane to its widest chapter/page label, within sensible limits."""
+        if not hasattr(self, "toc_tree") or not self.book:
+            return
+        try:
+            font = tkfont.Font(root=self, font=("Sans", 10))
+            widest = font.measure("CONTENTS")
+            def measure_items(parent=""):
+                nonlocal widest
+                for item in self.toc_tree.get_children(parent):
+                    widest = max(widest, font.measure(self.toc_tree.item(item, "text")) + 24)
+                    measure_items(item)
+            measure_items()
+            target = max(230, min(460, widest + 46))
+            self.sidebar_target_width = target
+            self.left.configure(width=target)
+            self.toc_tree.column("#0", width=max(175, target - 55), minwidth=170, stretch=True)
+            if self.sidebar_visible and not self.is_fullscreen:
+                self.after_idle(lambda: self.panes.sashpos(0, self.sidebar_target_width))
+        except (tk.TclError, ValueError):
+            pass
+
+    def _highlight_toc_index(self, index):
+        """Highlight the contents entry corresponding to the currently visible chapter."""
+        self._setting_toc_selection = True
+        try:
+            for iid, (idx, _fragment) in self._toc_items.items():
+                if idx == index:
+                    if self.toc_tree.selection() != (iid,):
+                        self.toc_tree.selection_set(iid)
+                    self.toc_tree.focus(iid)
+                    self.toc_tree.see(iid)
+                    return
+        finally:
+            self._setting_toc_selection = False
+
+    def open_dialog(self):
 
     def open_dialog(self):
         path = filedialog.askopenfilename(
@@ -864,25 +1010,31 @@ class Reader(tk.Tk):
         if drm_type:
             self._offer_external_drm_reader(path, drm_type)
             return
-        try: book = EPUBBook(path)
+        try:
+            book = EPUBBook(path)
         except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
-            messagebox.showerror("Could not open EPUB", str(exc)); return
+            messagebox.showerror("Could not open EPUB", str(exc))
+            return
         self.book = book
-        if not self.is_fullscreen:
-            self._ensure_toc_left()
         self.current_key = self._book_key(path)
         st = self._book_state()
-        self.index = max(0, min(len(book.chapters)-1, int(st.get("chapter", 0))))
+        self.index = max(0, min(len(book.chapters) - 1, int(st.get("chapter", 0))))
+        self.rendered_book_key = None
+        self.chapter_marks = []
         self.title(f"{book.title} — {APP_NAME}")
         self.book_label.configure(text=book.title)
         self._populate_toc()
+        self._render_book_text()
+        if not self.is_fullscreen:
+            self._ensure_toc_left()
         self.show_chapter(self.index, restore=True)
         self.show_details(first_open=True)
 
     def _populate_toc(self):
         self.toc_tree.delete(*self.toc_tree.get_children())
         self._toc_items = {}
-        if not self.book: return
+        if not self.book:
+            return
         member_to_index = {ch["member"]: i for i, ch in enumerate(self.book.chapters)}
         if self.book.toc:
             def add_nodes(nodes, parent=""):
@@ -901,37 +1053,76 @@ class Reader(tk.Tk):
                 pages = self.book.estimate_pages(ch, self.font_size, self.column_width, self.line_spacing)
                 iid = self.toc_tree.insert("", tk.END, text=f"{ch['title']}  ({pages} pp. est.)")
                 self._toc_items[iid] = (i, "")
+        self._fit_sidebar_to_contents()
 
     def _toc_selected(self, _event=None):
         if self._setting_toc_selection:
             return
         selected = self.toc_tree.selection()
-        if not selected: return
+        if not selected:
+            return
         data = self._toc_items.get(selected[0])
-        if data and data[0] is not None and data[0] != self.index:
-            self.show_chapter(data[0])
+        if data and data[0] is not None and (data[0] != self.index or data[1]):
+            self.show_chapter(data[0], fragment=data[1])
 
-    def show_chapter(self, index, restore=False):
-        if not self.book or not (0 <= index < len(self.book.chapters)): return
+    def _render_book_text(self):
+        """Render all chapters into one continuous text widget and keep chapter marks."""
+        if not self.book:
+            return
+        self.text.configure(state=tk.NORMAL)
+        self.text.delete("1.0", tk.END)
+        self.text.tag_remove("search_hit", "1.0", tk.END)
+        self.chapter_marks = []
+        for i, chapter in enumerate(self.book.chapters):
+            if i:
+                self.text.insert("end-1c", "\n\n")
+            start = f"chapter_start_{i}"
+            body = f"chapter_body_{i}"
+            end = f"chapter_end_{i}"
+            self.text.mark_set(start, "end-1c")
+            self.text.mark_gravity(start, "left")
+            title_start = self.text.index("end-1c")
+            self.text.insert("end-1c", chapter["title"] + "\n\n")
+            title_end = self.text.index("end-1c")
+            self.text.tag_add("chapter_heading", title_start, title_end)
+            self.text.mark_set(body, "end-1c")
+            self.text.mark_gravity(body, "left")
+            self.text.insert("end-1c", chapter["text"])
+            self.text.mark_set(end, "end-1c")
+            self.text.mark_gravity(end, "left")
+            self.chapter_marks.append({"start": start, "body": body, "end": end})
+        self.text.configure(state=tk.DISABLED)
+        self.text.yview_moveto(0.0)
+        self.rendered_book_key = self.current_key
+
+    def show_chapter(self, index, restore=False, fragment="", fraction=None):
+        """Navigate to a chapter inside the continuously scrolling reading pane."""
+        if not self.book or not (0 <= index < len(self.book.chapters)):
+            return
+        if self.rendered_book_key != self.current_key or len(self.chapter_marks) != len(self.book.chapters):
+            self._render_book_text()
         self.index = index
-        ch = self.book.chapters[index]
-        self.heading.configure(text=ch["title"])
-        self.set_text(ch["text"])
-        if restore:
-            fraction = float(self._book_state().get("fraction", 0.0))
-            self.text.yview_moveto(max(0.0, min(1.0, fraction)))
-        # Highlight the TOC entry whose target corresponds to this chapter.
-        self._setting_toc_selection = True
-        try:
-            for iid, (idx, _fragment) in self._toc_items.items():
-                if idx == index:
-                    self.toc_tree.selection_set(iid)
-                    self.toc_tree.focus(iid)
-                    self.toc_tree.see(iid)
-                    break
-        finally:
-            self._setting_toc_selection = False
-        self._update_progress()
+        chapter = self.book.chapters[index]
+        self.heading.configure(text=chapter["title"])
+        self.text.tag_remove("search_hit", "1.0", tk.END)
+        if fraction is not None:
+            self._goto_chapter_fraction(index, fraction)
+        elif restore:
+            saved_fraction = float(self._book_state().get("fraction", 0.0))
+            self._goto_chapter_fraction(index, saved_fraction)
+        elif fragment and fragment in chapter.get("ids", {}):
+            offset = max(0, int(chapter["ids"].get(fragment, 0)))
+            marks = self.chapter_marks[index]
+            try:
+                self.text.yview(f"{marks['body']} + {offset} chars")
+            except tk.TclError:
+                self.text.yview(marks["start"])
+        else:
+            self.text.yview(self.chapter_marks[index]["start"])
+        self._highlight_toc_index(index)
+        self.after_idle(self._update_progress)
+
+    def toggle_fullscreen(self):
 
     def toggle_fullscreen(self):
         if self.is_fullscreen: self.exit_fullscreen(); return
@@ -939,12 +1130,14 @@ class Reader(tk.Tk):
         self.fullscreen_column = True
         self.toolbar.pack_forget()
         self.panes.pack_configure(padx=0, pady=0)
-        self.panes.forget(self.left)
+        if str(self.left) in list(self.panes.panes()):
+            self.panes.forget(self.left)
+        self.sidebar_toggle.place_forget()
         self.heading.pack_forget()
         self.right.configure(padding=0)
         self.text.configure(padx=28, pady=24)
         self.text_scroll.pack_forget()
-        # Keep the whole-book progress bar and its numeric percentage at the bottom.
+        # Keep the current-chapter progress bar and its numeric percentage at the bottom.
         # Hide status/navigation text so the document remains distraction-free.
         self.status.pack_forget()
         self.progress.pack_forget()
@@ -969,7 +1162,8 @@ class Reader(tk.Tk):
         self.fullscreen_column = False
         self._ensure_toc_left()
         self.panes.pack_configure(padx=10, pady=(8, 6))
-        self.after_idle(lambda: self.panes.sashpos(0, 270))
+        self.sidebar_toggle.configure(text="◀" if self.sidebar_visible else "▶")
+        self.sidebar_toggle.place(relx=0.0, rely=0.5, anchor="w", x=0)
         self.right.configure(padding=6)
         self.heading.pack(fill=tk.X, anchor="w", pady=(0, 8), before=self.text_frame)
         self.text.configure(padx=22, pady=20)
@@ -983,6 +1177,8 @@ class Reader(tk.Tk):
         self.status.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.bottom.pack_configure(fill=tk.X)
         self.after_idle(self._refresh_reading_column)
+        if self.sidebar_visible:
+            self.after_idle(self._fit_sidebar_to_contents)
 
     def change_font(self, delta):
         self.font_size = max(8, min(32, self.font_size + delta))
@@ -991,10 +1187,143 @@ class Reader(tk.Tk):
         self._populate_toc()
         self._update_progress()
 
-    def show_details(self, first_open=False):
+def show_details(self, first_open=False):
         if not self.book or first_open:
             return
         b = self.book
         win = tk.Toplevel(self)
         win.title("Book details")
         win.geometry("720x540")
+        win.configure(background=APP_BG)
+        outer = ttk.Frame(win, padding=16, style="Panel.TFrame")
+        outer.pack(fill=tk.BOTH, expand=True)
+        cover_frame = ttk.Frame(outer)
+        cover_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 16))
+        self._cover_photo = None
+        if b.cover_bytes:
+            try:
+                try:
+                    from PIL import Image, ImageTk
+                    im = Image.open(io.BytesIO(b.cover_bytes))
+                    im.thumbnail((210, 320))
+                    self._cover_photo = ImageTk.PhotoImage(im)
+                except ImportError:
+                    # Tk's built-in image decoder handles PNG/GIF on common Linux builds.
+                    self._cover_photo = tk.PhotoImage(data=base64.b64encode(b.cover_bytes))
+                    if self._cover_photo.width() > 210 or self._cover_photo.height() > 320:
+                        factor = max(1, self._cover_photo.width() // 210, self._cover_photo.height() // 320)
+                        self._cover_photo = self._cover_photo.subsample(factor, factor)
+                ttk.Label(cover_frame, image=self._cover_photo).pack(anchor="n")
+            except Exception:
+                ttk.Label(cover_frame, text=f"Cover included\n({b.cover_name})", width=24).pack(anchor="n")
+        else:
+            ttk.Label(cover_frame, text="No cover image\nsupplied", width=24).pack(anchor="n")
+        info = ttk.Frame(outer)
+        info.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        lines = [f"Title: {b.title}", f"Author: {b.author or 'Not supplied'}", f"Publisher: {b.publisher or 'Not supplied'}", f"Publication date: {b.date or 'Not supplied'}", f"Language: {b.language or 'Not supplied'}", f"Identifier: {b.identifier or 'Not supplied'}", f"Words (extracted): {b.word_count:,}", f"Chapters in reading order: {len(b.chapters)}", f"Cover file: {b.cover_name or 'Not supplied'}"]
+        if b.subjects: lines.append("Subjects: " + "; ".join(b.subjects))
+        ttk.Label(info, text="\n".join(lines), justify=tk.LEFT, wraplength=410, style="Panel.TLabel").pack(anchor="nw", fill=tk.X)
+        if b.description:
+            ttk.Label(info, text="Description", style="Heading.TLabel").pack(anchor="w", pady=(14, 3))
+            desc = tk.Text(info, height=8, wrap=tk.WORD, font=(FONT_NAME, 10), bg=DEFAULT_BG, fg=DEFAULT_FG, insertbackground=DEFAULT_FG, relief=tk.FLAT, highlightthickness=0)
+            desc.pack(fill=tk.BOTH, expand=True)
+            desc.insert("1.0", b.description); desc.configure(state=tk.DISABLED)
+        ttk.Button(info, text="Close", command=win.destroy).pack(anchor="e", pady=(10, 0))
+
+    def search_dialog(self):
+        if not self.book:
+            messagebox.showinfo("Search", "Open an EPUB first."); return
+        query = simpledialog.askstring("Search book", "Find text in this book:", parent=self)
+        if not query: return
+        q = query.casefold()
+        results = []
+        for i, ch in enumerate(self.book.chapters):
+            start = 0
+            text = ch["text"]
+            folded = text.casefold()
+            while True:
+                pos = folded.find(q, start)
+                if pos < 0: break
+                excerpt = text[max(0, pos-55):min(len(text), pos+len(query)+85)].replace("\n", " ")
+                results.append((i, pos, excerpt))
+                start = pos + max(1, len(q))
+                if len(results) >= 200: break
+            if len(results) >= 200: break
+        if not results:
+            messagebox.showinfo("Search", f"No results found for: {query}"); return
+        win = tk.Toplevel(self); win.title(f"Search results — {query}"); win.geometry("760x420"); win.configure(background=APP_BG)
+        ttk.Label(win, text=f"{len(results)} result(s) for “{query}” (showing up to 200)").pack(anchor="w", padx=10, pady=8)
+        frame = ttk.Frame(win); frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        lb = tk.Listbox(frame, width=100, height=18, bg=PANEL_BG, fg=DEFAULT_FG, selectbackground=MINT_DARK, selectforeground="#FFFFFF", relief=tk.FLAT, highlightthickness=0, font=("Sans", 10)); sb = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=lb.yview); lb.configure(yscrollcommand=sb.set)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True); sb.pack(side=tk.RIGHT, fill=tk.Y)
+        for i, pos, excerpt in results: lb.insert(tk.END, f"{self.book.chapters[i]['title']} — …{excerpt}…")
+        def jump(_event=None):
+            sel = lb.curselection()
+            if not sel: return
+            i, pos, _excerpt = results[sel[0]]
+            self.show_chapter(i)
+            self.text.configure(state=tk.NORMAL)
+            body_mark = self.chapter_marks[i]["body"]
+            start = f"{body_mark} + {pos} chars"
+            end = f"{start} + {len(query)} chars"
+            self.text.tag_remove("search_hit", "1.0", tk.END)
+            self.text.tag_add("search_hit", start, end)
+            self.text.see(start)
+            self.text.configure(state=tk.DISABLED)
+            self._update_progress()
+            win.destroy()
+        lb.bind("<Double-Button-1>", jump)
+        ttk.Button(win, text="Open selected result", command=jump).pack(anchor="e", padx=10, pady=(0, 10))
+
+    def add_bookmark(self):
+        if not self.book:
+            messagebox.showinfo("Bookmarks", "Open an EPUB first."); return
+        label = simpledialog.askstring("Add bookmark", "Bookmark name (optional):", parent=self)
+        if label is None: return
+        st = self._book_state()
+        self._update_progress()
+        fraction = self._chapter_fraction()
+        st.setdefault("bookmarks", []).append({"label": label.strip() or f"{self.book.chapters[self.index]['title']} — {int(fraction*100)}%", "chapter": self.index, "fraction": fraction})
+        self._save_state()
+        self.status.configure(text="Bookmark saved.")
+
+    def show_bookmarks(self):
+        if not self.book:
+            messagebox.showinfo("Bookmarks", "Open an EPUB first."); return
+        marks = self._book_state().setdefault("bookmarks", [])
+        win = tk.Toplevel(self); win.title("Bookmarks"); win.geometry("640x320"); win.configure(background=APP_BG)
+        lb = tk.Listbox(win, bg=PANEL_BG, fg=DEFAULT_FG, selectbackground=MINT_DARK, selectforeground="#FFFFFF", relief=tk.FLAT, highlightthickness=0, font=("Sans", 10)); lb.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        for mark in marks:
+            ch = max(0, min(len(self.book.chapters)-1, int(mark.get("chapter", 0))))
+            lb.insert(tk.END, f"{mark.get('label', 'Bookmark')} — {self.book.chapters[ch]['title']}")
+        def open_mark(_event=None):
+            sel = lb.curselection()
+            if not sel: return
+            mark = marks[sel[0]]
+            chapter_index = max(0, min(len(self.book.chapters)-1, int(mark.get("chapter", 0))))
+            self.show_chapter(chapter_index, fraction=max(0.0, min(1.0, float(mark.get("fraction", 0.0)))))
+            self._update_progress(); win.destroy()
+        def remove_mark():
+            sel = lb.curselection()
+            if not sel: return
+            del marks[sel[0]]; self._save_state(); win.destroy(); self.show_bookmarks()
+        lb.bind("<Double-Button-1>", open_mark)
+        buttons = ttk.Frame(win); buttons.pack(fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(buttons, text="Open", command=open_mark).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Delete selected", command=remove_mark).pack(side=tk.LEFT, padx=6)
+
+    def on_close(self):
+        if self.book: self._update_progress()
+        try: self._save_state()
+        except OSError: pass
+        self.destroy()
+
+
+def main():
+    app = Reader()
+    if len(sys.argv) > 1:
+        app.after(150, lambda: app.open_book(sys.argv[1]))
+    app.mainloop()
+
+if __name__ == "__main__":
+    main()
