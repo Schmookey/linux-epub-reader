@@ -234,21 +234,21 @@ def welcome_text_for_last_book(state):
         return WELCOME_TEXT
     if os.path.isfile(path):
         message = (
-            f"Welcome back!\\n\\nYour last book was:\\n{title}\\n\\n"
+            f"Welcome back!\n\nYour last book was:\n{title}\n\n"
             "Your saved chapter and reading position are ready. Select "
             "“Resume last book” in the toolbar to continue, or choose "
             "“Open book…” to read something else."
         )
     else:
         message = (
-            f"Welcome back!\\n\\nYour last book was:\\n{title}\\n\\n"
+            f"Welcome back!\n\nYour last book was:\n{title}\n\n"
             "The book is not currently available at its saved location. "
             "Select “Locate last book…” to find it again. Your saved reading "
             "position and bookmarks will be restored when you select the same book."
         )
     if inferred:
         message += (
-            "\\n\\nThis suggestion was recovered from your earlier reading "
+            "\n\nThis suggestion was recovered from your earlier reading "
             "history; confirm it is the book you want to resume."
         )
     return message
