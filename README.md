@@ -13,7 +13,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
 - Full-screen reading (F11; Esc to exit), with an optional floating Mint-green F11 exit hint and a saved 'Don't show this again' preference. The hint can be restored from the View menu.
 - Book metadata, search, bookmarks and saved reading positions.
-- A welcome-back screen with a Resume last book action, restoring the last saved chapter and position.
+- An illustrated welcome-back screen with the last book's front cover, available publication details, saved chapter and progress, and a prominent Mint-green Resume button.
 - Detection of Adobe ADEPT and Readium LCP protected files without attempting to remove protection.
 
 ## Current limitations
@@ -30,7 +30,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Linux desktop with Python 3 and Tkinter (python3, python3-tk).
 - Optional: fonts-atkinson-hyperlegible for the preferred typeface. The reader falls back to available fonts if it is absent.
 
-The app uses Python's standard library and Tkinter; no third-party Python package is required.
+The app uses Python and Tkinter. Pillow (python3-pil on Debian/Ubuntu) is used for JPEG and other cover-image formats; Tk's built-in decoder remains a fallback for supported image types.
 
 ## Run from source
 
