@@ -13,6 +13,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
 - Full-screen reading (F11; Esc to exit), with an optional floating Mint-green F11 exit hint and a saved 'Don't show this again' preference. The hint can be restored from the View menu.
 - Book metadata, search, bookmarks and saved reading positions.
+- A welcome-back screen with a Resume last book action, restoring the last saved chapter and position.
 - Detection of Adobe ADEPT and Readium LCP protected files without attempting to remove protection.
 
 ## Current limitations
