@@ -50,7 +50,7 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
 The Debian package uses gzip compression for broader compatibility with older package managers.
 
-The output is dist/linux-epub-reader_0.13.7-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.9-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
     sudo apt install ./dist/linux-epub-reader_0.13.7-1_all.deb
 
