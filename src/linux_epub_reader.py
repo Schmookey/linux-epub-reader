@@ -1106,7 +1106,7 @@ class Reader(tk.Tk):
             return
         messagebox.showinfo(
             "Last book not found",
-            f"Linux EPUB Reader cannot find “{title}” at its saved location.\\n\\n"
+            f"Linux EPUB Reader cannot find “{title}” at its saved location.\n\n"
             "Please select the same DRM-free EPUB file again. Its saved chapter, "
             "reading position and bookmarks will be restored.",
             parent=self,
