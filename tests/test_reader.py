@@ -217,13 +217,13 @@ class ResumeLastBookTests(unittest.TestCase):
             missing_message = reader.welcome_text_for_last_book(state)
             self.assertIn("\n\n", missing_message)
             self.assertIn("Locate last book", missing_message)
-            self.assertNotIn("\\\\n", missing_message)
+            self.assertNotIn("\\n", missing_message)
             with open(path, "wb") as handle:
                 handle.write(b"test")
             existing_message = reader.welcome_text_for_last_book(state)
             self.assertIn("Resume last book", existing_message)
             self.assertIn("\n\n", existing_message)
-            self.assertNotIn("\\\\n", existing_message)
+            self.assertNotIn("\\n", existing_message)
 
 
 class EpubTests(unittest.TestCase):
