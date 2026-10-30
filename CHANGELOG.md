@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.8-1 — Resume last book
+
+- Add a Resume last book action to the toolbar and a welcome-back message showing the last book.
+- Save the last successfully opened book's path and title locally; keep each book's chapter, reading position and bookmarks in its existing per-book record.
+- Restore the saved chapter and position when resuming, without opening another application or using a network connection.
+- If the saved book has moved, let the user locate it again and carry its saved position/bookmarks to the selected path without overwriting existing state.
+- Offer a best-effort resume suggestion for existing v0.13.7 reading-state files, which did not record the global last-opened book.
+- Add regression tests for resume-state migration, moved files and welcome-back messaging.
+
+
 ## 0.13.7-1 — Practical welcome and privacy information
 
 - Replace the welcome page with a practical description of reading, contents navigation, search, bookmarks and full-screen controls.
