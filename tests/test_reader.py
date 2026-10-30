@@ -24,6 +24,58 @@ def make_epub(path):
             archive.writestr(name, data)
 
 
+class CoverAndWelcomePanelDataTests(unittest.TestCase):
+    def test_epub3_cover_image_is_extracted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "cover.epub")
+            cover = (
+                b"\\x89PNG\\r\\n\\x1a\\n"
+                b"\\x00\\x00\\x00\\rIHDR"
+                b"\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01"
+                b"\\x08\\x06\\x00\\x00\\x00"
+                b"\\x1f\\x15\\xc4\\x89"
+                b"\\x00\\x00\\x00\\x0bIDATx\\x9cc\\xf8\\xcf\\xc0\\xf0\\x1f\\x00\\x05\\x00\\x01\\xff"
+                b"\\x89\\x99=\\x1d"
+                b"\\x00\\x00\\x00\\x00IEND\\xaeB\\x60\\x82"
+            )
+            files = {
+                "META-INF/container.xml": '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf"/></rootfiles></container>',
+                "EPUB/package.opf": '<package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Cover Test</dc:title><dc:creator>Test Author</dc:creator></metadata><manifest><item id="cover" href="images/front%20cover.png" media-type="image/png" properties="cover-image"/><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>',
+                "EPUB/images/front cover.png": cover,
+                "EPUB/chapter.xhtml": "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Chapter One</h1><p>Cover test text.</p></body></html>",
+            }
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+                for name, data in files.items():
+                    archive.writestr(name, data)
+            book = reader.EPUBBook(path)
+            self.assertEqual(book.cover_name, "front cover.png")
+            self.assertEqual(book.cover_bytes, cover)
+            self.assertEqual(book.author, "Test Author")
+
+    def test_saved_book_summary_reports_chapter_and_overall_progress(self):
+        class Book:
+            chapters = [
+                {"title": "First", "words": 100},
+                {"title": "Second", "words": 300},
+            ]
+        path = "/books/sample.epub"
+        state = {
+            "books": {
+                reader.book_state_key(path): {
+                    "chapter": 1,
+                    "fraction": 0.5,
+                }
+            }
+        }
+        summary = reader.saved_book_summary(state, path, Book())
+        self.assertEqual(summary["chapter_number"], 2)
+        self.assertEqual(summary["chapter_count"], 2)
+        self.assertEqual(summary["chapter_title"], "Second")
+        self.assertEqual(summary["chapter_percent"], 50)
+        self.assertEqual(summary["overall_percent"], 63)
+
+
 class ProgressTests(unittest.TestCase):
     def test_progress_starts_at_zero(self):
         self.assertEqual(reader.chapter_progress_fraction(0, 100, 20), 0.0)
