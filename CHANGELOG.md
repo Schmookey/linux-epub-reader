@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.9-1 — Illustrated welcome-back panel
+
+- Replace the title-only welcome-back message with a book panel showing the front cover, title, author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
+- Show the saved chapter, chapter position and estimated overall reading progress, with a prominent Linux Mint-green Resume button.
+- Load the last book locally for the welcome preview and reuse the parsed book when resuming; no book contents or reading history leave the computer.
+- Improve EPUB 2 and EPUB 3 cover metadata detection and resolve escaped image paths.
+- Bundle Pillow in the Flatpak and depend on the distribution's python3-pil package for JPEG cover display; use Tk's native decoder as a fallback for supported formats.
+
+
 ## 0.13.8-1 — Resume last book
 
 - Add a Resume last book action to the toolbar and a welcome-back message showing the last book.
