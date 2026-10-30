@@ -214,10 +214,16 @@ class ResumeLastBookTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "book.epub")
             state = {"last_opened_book": path, "last_opened_title": "My Book"}
-            self.assertIn("Locate last book", reader.welcome_text_for_last_book(state))
+            missing_message = reader.welcome_text_for_last_book(state)
+            self.assertIn("\n\n", missing_message)
+            self.assertIn("Locate last book", missing_message)
+            self.assertNotIn("\\\\n", missing_message)
             with open(path, "wb") as handle:
                 handle.write(b"test")
-            self.assertIn("Resume last book", reader.welcome_text_for_last_book(state))
+            existing_message = reader.welcome_text_for_last_book(state)
+            self.assertIn("Resume last book", existing_message)
+            self.assertIn("\n\n", existing_message)
+            self.assertNotIn("\\\\n", existing_message)
 
 
 class EpubTests(unittest.TestCase):
