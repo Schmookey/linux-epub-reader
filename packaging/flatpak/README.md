@@ -34,7 +34,7 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 flatpak install --user flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir io.github.schmookey.LinuxEpubReader.yml
 mkdir -p dist
-flatpak build-bundle repo dist/linux-epub-reader-0.13.7.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak build-bundle repo dist/linux-epub-reader-0.13.8.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 ```
 
 The GitHub Actions workflow builds the bundle when packaging or application files change, saves a downloadable workflow artifact, and attaches the bundle to newly published releases. To attach a bundle to an existing release, use **Actions → Standalone Flatpak → Run workflow** and supply a source ref and release tag.
