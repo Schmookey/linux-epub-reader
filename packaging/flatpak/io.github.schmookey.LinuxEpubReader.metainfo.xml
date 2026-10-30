@@ -6,7 +6,7 @@
   <name>Linux EPUB Reader</name>
   <summary>Read EPUB books offline in a dark interface</summary>
   <description>
-    <p>A simple, text-oriented EPUB reader with continuous chapter scrolling, a contents panel, search, bookmarks, and saved reading positions.</p>
+    <p>A simple, text-oriented EPUB reader with continuous chapter scrolling, a contents panel, search, bookmarks, saved reading positions and a welcome-back action to resume the last book.</p>
     <p>The app uses Atkinson Hyperlegible with a dark reading surface. It works locally and does not need network access to read books.</p>
     <p>This is not a browser-grade EPUB renderer. Complex publisher layouts, illustrations, embedded media, and Adobe DRM are not supported.</p>
   </description>
@@ -15,5 +15,5 @@
   <url type="bugtracker">https://github.com/Schmookey/linux-epub-reader/issues</url>
   <developer_name>Linux EPUB Reader contributors</developer_name>
   <provides><mediatype>application/epub+zip</mediatype></provides>
-  <releases><release version="0.13.7" date="2026-10-27"/></releases>
+  <releases><release version="0.13.8" date="2026-10-30"/><release version="0.13.7" date="2026-10-27"/></releases>
 </component>
