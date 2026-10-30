@@ -6,6 +6,7 @@ on:
       - '.github/workflows/flatpak.yml'
       - 'io.github.schmookey.LinuxEpubReader.yml'
       - 'src/**'
+      - 'tests/**'
       - 'share/icons/**'
       - 'packaging/flatpak/**'
       - 'LICENSE'
