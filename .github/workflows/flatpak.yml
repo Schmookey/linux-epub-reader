@@ -34,39 +34,59 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: flatpak-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out the requested source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.source_ref || github.event.release.tag_name || github.ref }}
+
+      - name: Set up the pinned host Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.15.2"
 
       - name: Install Flatpak build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 python3-tk
+          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11
+
+      - name: Report and verify the build environment
+        run: |
+          cat /etc/os-release
+          flatpak --version
+          flatpak-builder --version
+          appstreamcli --version
+          python -VV
+          python -c 'import sys; assert sys.version_info[:3] == (3, 15, 2), sys.version'
 
       - name: Add Flathub remote and install the build runtime
         run: |
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
+          flatpak info --show-branch org.freedesktop.Platform//26.08
+          flatpak info --show-commit org.freedesktop.Platform//26.08
 
       - name: Validate AppStream metadata
         run: appstreamcli validate packaging/flatpak/io.github.schmookey.LinuxEpubReader.metainfo.xml
 
       - name: Run project tests
         run: |
-          python3 -m py_compile src/linux_epub_reader.py tests/test_reader.py
-          python3 -m unittest discover -s tests -v
+          python -m py_compile src/linux_epub_reader.py tests/test_reader.py
+          python -m unittest discover -s tests -v
 
       - name: Build Flatpak
         run: |
           set -euo pipefail
           flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir io.github.schmookey.LinuxEpubReader.yml
           APP_ID=io.github.schmookey.LinuxEpubReader
-          VERSION="$(sed -n 's/^APP_VERSION = "\([^"]*\)"/\1/p' src/linux_epub_reader.py | head -n 1)"
+          VERSION="$(grep -m1 '^APP_VERSION = ' src/linux_epub_reader.py | cut -d '"' -f 2)"
           test -n "$VERSION"
           mkdir -p dist
           flatpak build-bundle repo "dist/linux-epub-reader-${VERSION}.flatpak" "$APP_ID" --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -74,14 +94,14 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUNDLE=dist/linux-epub-reader-${VERSION}.flatpak" >> "$GITHUB_ENV"
 
-      - name: Install the bundle and smoke-test Tkinter in the sandbox
+      - name: Install the bundle and verify Python, Tcl and Tk in the sandbox
         run: |
           flatpak install --user --noninteractive "$BUNDLE"
-          dbus-run-session -- xvfb-run -a flatpak run --user --command=python3.13 "$APP_ID" -c 'import tkinter, _tkinter; root = tkinter.Tk(); root.withdraw(); root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
-          flatpak run --user --command=python3.13 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
+          dbus-run-session -- xvfb-run -a flatpak run --user --command=python3.15 "$APP_ID" -c 'import sys, tkinter, _tkinter; assert sys.version_info[:3] == (3, 15, 2), sys.version; root = tkinter.Tk(); root.withdraw(); tcl = root.tk.call("info", "patchlevel"); tk = root.tk.call("package", "require", "Tk"); print("Python:", sys.version.split()[0]); print("Tcl:", tcl); print("Tk:", tk); assert tcl == "9.1.0", tcl; assert tk == "9.1.0", tk; root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
+          flatpak run --user --command=python3.15 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
 
       - name: Save bundle as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-epub-reader-flatpak
           path: ${{ env.BUNDLE }}

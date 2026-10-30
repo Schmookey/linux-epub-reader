@@ -8,6 +8,8 @@
 - If the saved book has moved, let the user locate it again and carry its saved position/bookmarks to the selected path without overwriting existing state.
 - Offer a best-effort resume suggestion for existing v0.13.7 reading-state files, which did not record the global last-opened book.
 - Add regression tests for resume-state migration, moved files and welcome-back messaging.
+- Modernise CI to Ubuntu 26.04 and current GitHub Actions; test Python 3.12.16 and 3.15.2.
+- Modernise the standalone Flatpak to CPython 3.15.2, Tcl/Tk 9.1.0 and Freedesktop Platform 26.08, with explicit in-sandbox version checks.
 
 
 ## 0.13.7-1 — Practical welcome and privacy information
