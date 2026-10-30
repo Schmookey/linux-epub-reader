@@ -4,6 +4,8 @@ Linux EPUB Reader's original project materials are covered by the licence notice
 
 The Flatpak build includes these additional components:
 
+- **Pillow 13.0.0** — bundled Python image decoder for JPEG and other EPUB cover formats; upstream: https://python-pillow.org/
+
 - **CPython 3.15.2** — bundled interpreter and matching Tkinter extension; licence installed at `share/licenses/python/LICENSE`. Upstream: https://www.python.org/
 - **Tcl 9.1.0** — source pinned to upstream tag `core-9-1-0`; licence terms are installed at `share/licenses/tcl/LICENSE`. Upstream: https://www.tcl-lang.org/
 - **Tk 9.1.0** — source pinned to upstream tag `core-9-1-0`; licence terms are installed at `share/licenses/tk/LICENSE`. Upstream: https://www.tcl-lang.org/
