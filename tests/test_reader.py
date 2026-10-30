@@ -28,15 +28,10 @@ class CoverAndWelcomePanelDataTests(unittest.TestCase):
     def test_epub3_cover_image_is_extracted(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "cover.epub")
-            cover = (
-                b"\\x89PNG\\r\\n\\x1a\\n"
-                b"\\x00\\x00\\x00\\rIHDR"
-                b"\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01"
-                b"\\x08\\x06\\x00\\x00\\x00"
-                b"\\x1f\\x15\\xc4\\x89"
-                b"\\x00\\x00\\x00\\x0bIDATx\\x9cc\\xf8\\xcf\\xc0\\xf0\\x1f\\x00\\x05\\x00\\x01\\xff"
-                b"\\x89\\x99=\\x1d"
-                b"\\x00\\x00\\x00\\x00IEND\\xaeB\\x60\\x82"
+            cover = bytes.fromhex(
+                "89504e470d0a1a0a0000000d494844520000000100000001"
+                "08060000001f15c4890000000b49444154789c636000020000"
+                "050001a5f645400000000049454e44ae426082"
             )
             files = {
                 "META-INF/container.xml": '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf"/></rootfiles></container>',
