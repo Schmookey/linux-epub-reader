@@ -63,6 +63,15 @@ modules:
             url: https://github.com/tcltk/tk.git
             tag: core-9-1-0
             commit: 3f45110c0a568b70f2ebd5412f215e87d199bc7d
+      - name: pillow
+        buildsystem: simple
+        build-commands:
+          - install -d ${FLATPAK_DEST}/lib/python3.15/site-packages
+          - cp -a PIL pillow.libs pillow-13.0.0.dist-info ${FLATPAK_DEST}/lib/python3.15/site-packages/
+        sources:
+          - type: archive
+            url: https://files.pythonhosted.org/packages/85/11/e46fa0bcc0fc117f1eacc206b3d51f04d583fab328b4b740672d0438d83f/pillow-13.0.0-cp315-cp315-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+            sha256: 8f36aa77f74b14a2103622b196402c71330e4e7cf4122ee45c854e9a01e0eecf
 
   - name: linux-epub-reader
     buildsystem: simple
