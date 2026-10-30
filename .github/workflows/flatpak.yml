@@ -70,8 +70,14 @@ jobs:
         run: |
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
-          flatpak info --show-branch org.freedesktop.Platform//26.08
+          PLATFORM_REF="$(flatpak info --show-ref org.freedesktop.Platform//26.08)"
+          SDK_REF="$(flatpak info --show-ref org.freedesktop.Sdk//26.08)"
+          printf 'Installed Platform ref: %s\n' "$PLATFORM_REF"
+          printf 'Installed SDK ref: %s\n' "$SDK_REF"
+          case "$PLATFORM_REF" in */26.08) ;; *) echo "Unexpected Platform ref: $PLATFORM_REF" >&2; exit 1 ;; esac
+          case "$SDK_REF" in */26.08) ;; *) echo "Unexpected SDK ref: $SDK_REF" >&2; exit 1 ;; esac
           flatpak info --show-commit org.freedesktop.Platform//26.08
+          flatpak info --show-commit org.freedesktop.Sdk//26.08
 
       - name: Validate AppStream metadata
         run: appstreamcli validate packaging/flatpak/io.github.schmookey.LinuxEpubReader.metainfo.xml
