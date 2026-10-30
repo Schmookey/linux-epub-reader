@@ -145,10 +145,85 @@ class DrmNoticeTests(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
 
+class ResumeLastBookTests(unittest.TestCase):
+    def test_explicit_last_book_path_and_title_are_returned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "book.epub")
+            state = {"last_opened_book": path, "last_opened_title": "My Book"}
+            self.assertEqual(
+                reader.last_opened_book_info(state),
+                (os.path.abspath(path), "My Book", False),
+            )
+
+    def test_legacy_state_uses_last_inserted_book_as_a_suggestion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = os.path.join(directory, "first.epub")
+            second = os.path.join(directory, "second.epub")
+            state = {"books": {
+                "first": {"path": first, "chapter": 1, "fraction": 0.2},
+                "second": {"path": second, "chapter": 3, "fraction": 0.7},
+            }}
+            self.assertEqual(
+                reader.last_opened_book_info(state),
+                (os.path.abspath(second), "second.epub", True),
+            )
+
+    def test_empty_state_has_no_resume_target(self):
+        self.assertEqual(reader.last_opened_book_info({"books": {}}), ("", "", False))
+
+    def test_remember_last_opened_book_stores_only_path_and_title(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "book.epub")
+            state = {"books": {}}
+            reader.remember_last_opened_book(state, path, "Book Title")
+            self.assertEqual(state["last_opened_book"], os.path.abspath(path))
+            self.assertEqual(state["last_opened_title"], "Book Title")
+            self.assertEqual(set(state), {"books", "last_opened_book", "last_opened_title"})
+
+    def test_moved_book_receives_saved_position_and_bookmarks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old_path = os.path.join(directory, "old", "book.epub")
+            new_path = os.path.join(directory, "new", "book.epub")
+            old_key = reader.book_state_key(old_path)
+            new_key = reader.book_state_key(new_path)
+            state = {"books": {
+                old_key: {"path": old_path, "chapter": 4, "fraction": 0.63,
+                          "bookmarks": [{"label": "Important", "chapter": 2, "fraction": 0.4}]}
+            }}
+            self.assertTrue(reader.restore_book_state_for_moved_file(state, old_path, new_path))
+            self.assertEqual(state["books"][new_key]["chapter"], 4)
+            self.assertEqual(state["books"][new_key]["fraction"], 0.63)
+            self.assertEqual(state["books"][new_key]["bookmarks"][0]["label"], "Important")
+            self.assertEqual(state["books"][new_key]["path"], os.path.abspath(new_path))
+            self.assertIn(old_key, state["books"])
+
+    def test_existing_destination_state_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old_path = os.path.join(directory, "old.epub")
+            new_path = os.path.join(directory, "new.epub")
+            old_key = reader.book_state_key(old_path)
+            new_key = reader.book_state_key(new_path)
+            state = {"books": {
+                old_key: {"path": old_path, "chapter": 4, "fraction": 0.63, "bookmarks": []},
+                new_key: {"path": new_path, "chapter": 1, "fraction": 0.1, "bookmarks": []},
+            }}
+            self.assertFalse(reader.restore_book_state_for_moved_file(state, old_path, new_path))
+            self.assertEqual(state["books"][new_key]["chapter"], 1)
+
+    def test_welcome_message_explains_resume_and_missing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "book.epub")
+            state = {"last_opened_book": path, "last_opened_title": "My Book"}
+            self.assertIn("Locate last book", reader.welcome_text_for_last_book(state))
+            with open(path, "wb") as handle:
+                handle.write(b"test")
+            self.assertIn("Resume last book", reader.welcome_text_for_last_book(state))
+
+
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.7")
+        self.assertEqual(reader.APP_VERSION, "0.13.8")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
