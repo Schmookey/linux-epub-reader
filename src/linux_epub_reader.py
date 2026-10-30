@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.7"
+APP_VERSION = "0.13.8"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -163,6 +163,95 @@ def migrate_legacy_state():
             # Reading remains usable if migration is unavailable; state saving
             # will report no user-facing error until the next explicit save.
             pass
+
+
+def book_state_key(path):
+    """Return the stable per-book key used for locally saved reading state."""
+    normalised = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    return hashlib.sha256(normalised.encode()).hexdigest()[:24]
+
+
+def last_opened_book_info(state):
+    """Return (path, title, inferred) for the last book, including v0.13.7 state.
+
+    Older state files did not record a global last-opened path. For those files,
+    use the last inserted book record as a best-effort starting suggestion. The
+    user still chooses whether to resume it.
+    """
+    if not isinstance(state, dict):
+        return "", "", False
+    path = state.get("last_opened_book")
+    title = state.get("last_opened_title", "")
+    inferred = False
+    if not path:
+        books = state.get("books", {})
+        if isinstance(books, dict):
+            for record in reversed(list(books.values())):
+                if isinstance(record, dict) and record.get("path"):
+                    path = record["path"]
+                    inferred = True
+                    break
+    if not isinstance(path, (str, os.PathLike)) or not os.fspath(path).strip():
+        return "", "", False
+    path = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    if not title:
+        title = os.path.basename(path)
+    return path, str(title), inferred
+
+
+def remember_last_opened_book(state, path, title):
+    """Record the last successfully opened book without storing its contents."""
+    state["last_opened_book"] = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    state["last_opened_title"] = str(title or os.path.basename(path))
+
+
+def restore_book_state_for_moved_file(state, old_path, new_path):
+    """Copy saved position/bookmarks to a user-selected replacement path.
+
+    Existing state for the new path is kept intact. The old record is retained
+    too, so choosing a different file never destroys the previous reading data.
+    """
+    old_key = book_state_key(old_path)
+    new_key = book_state_key(new_path)
+    if old_key == new_key:
+        return False
+    books = state.setdefault("books", {})
+    previous = books.get(old_key)
+    if not isinstance(previous, dict) or new_key in books:
+        return False
+    restored = dict(previous)
+    restored["path"] = os.path.abspath(os.path.expanduser(os.fspath(new_path)))
+    restored["bookmarks"] = [dict(item) if isinstance(item, dict) else item
+                             for item in previous.get("bookmarks", [])]
+    books[new_key] = restored
+    return True
+
+
+def welcome_text_for_last_book(state):
+    """Build the local welcome screen with an optional resume/locate hint."""
+    path, title, inferred = last_opened_book_info(state)
+    if not path:
+        return WELCOME_TEXT
+    if os.path.isfile(path):
+        message = (
+            f"Welcome back!\\n\\nYour last book was:\\n{title}\\n\\n"
+            "Your saved chapter and reading position are ready. Select "
+            "“Resume last book” in the toolbar to continue, or choose "
+            "“Open book…” to read something else."
+        )
+    else:
+        message = (
+            f"Welcome back!\\n\\nYour last book was:\\n{title}\\n\\n"
+            "The book is not currently available at its saved location. "
+            "Select “Locate last book…” to find it again. Your saved reading "
+            "position and bookmarks will be restored when you select the same book."
+        )
+    if inferred:
+        message += (
+            "\\n\\nThis suggestion was recovered from your earlier reading "
+            "history; confirm it is the book you want to resume."
+        )
+    return message
 
 
 def lname(tag):
@@ -482,6 +571,7 @@ class Reader(tk.Tk):
         self._setting_toc_selection = False
         self._search_results = []
         self._build_ui()
+        self._refresh_resume_ui()
         self.bind("<Control-o>", lambda _e: self.open_dialog())
         self.bind("<Control-f>", lambda _e: self.search_dialog())
         self.bind("<Control-b>", lambda _e: self.add_bookmark())
@@ -503,7 +593,7 @@ class Reader(tk.Tk):
         os.replace(tmp, STATE_FILE)
 
     def _book_key(self, path):
-        return hashlib.sha256(os.path.abspath(path).encode()).hexdigest()[:24]
+        return book_state_key(path)
 
     def _book_state(self):
         if not self.current_key: return {}
@@ -565,6 +655,10 @@ class Reader(tk.Tk):
         self.toolbar = ttk.Frame(self, padding=(12, 10), style="Toolbar.TFrame")
         self.toolbar.pack(fill=tk.X)
         ttk.Button(self.toolbar, text="Open book…", command=self.open_dialog).pack(side=tk.LEFT)
+        self.resume_button = ttk.Button(
+            self.toolbar, text="Resume last book", command=self.resume_last_book, state=tk.DISABLED
+        )
+        self.resume_button.pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Book details", command=self.show_details).pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Search book", command=self.search_dialog).pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Bookmarks", command=self.show_bookmarks).pack(side=tk.LEFT, padx=(7, 0))
@@ -691,7 +785,7 @@ class Reader(tk.Tk):
         self.progress_percent.pack(side=tk.RIGHT, padx=(10, 0))
         self.progress = ttk.Progressbar(self.bottom, style="LinuxEPUB.Horizontal.TProgressbar", orient=tk.HORIZONTAL, mode="determinate", maximum=100, length=240)
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
-        self.set_text(WELCOME_TEXT)
+        self.set_text(welcome_text_for_last_book(self.state))
 
     def show_about(self):
         """Show the running application version so installed builds are easy to verify."""
@@ -990,7 +1084,46 @@ class Reader(tk.Tk):
         title, message = drm_notice_for(path, drm_type)
         messagebox.showinfo(title, message)
 
-    def open_book(self, path):
+    def _refresh_resume_ui(self):
+        """Keep the Resume button and welcome text aligned with saved local state."""
+        path, _title, _inferred = last_opened_book_info(self.state)
+        if path:
+            label = "Resume last book" if os.path.isfile(path) else "Locate last book…"
+            self.resume_button.configure(text=label, state=tk.NORMAL)
+        else:
+            self.resume_button.configure(text="Resume last book", state=tk.DISABLED)
+        if self.book is None:
+            self.set_text(welcome_text_for_last_book(self.state))
+
+    def resume_last_book(self):
+        """Resume the last book, or let the user locate it if it has moved."""
+        path, title, _inferred = last_opened_book_info(self.state)
+        if not path:
+            self.open_dialog()
+            return
+        if os.path.isfile(path):
+            self.open_book(path)
+            return
+        messagebox.showinfo(
+            "Last book not found",
+            f"Linux EPUB Reader cannot find “{title}” at its saved location.\\n\\n"
+            "Please select the same DRM-free EPUB file again. Its saved chapter, "
+            "reading position and bookmarks will be restored.",
+            parent=self,
+        )
+        initial_dir = os.path.dirname(path)
+        if not os.path.isdir(initial_dir):
+            initial_dir = os.path.expanduser("~")
+        selected = filedialog.askopenfilename(
+            parent=self,
+            title="Locate your last EPUB book",
+            initialdir=initial_dir,
+            filetypes=[("EPUB books", "*.epub"), ("All files", "*.*")],
+        )
+        if selected:
+            self.open_book(selected, restore_from_path=path)
+
+    def open_book(self, path, restore_from_path=None):
         path = os.path.abspath(os.path.expanduser(path))
         drm_type = detect_drm_input(path)
         if drm_type:
@@ -1001,8 +1134,16 @@ class Reader(tk.Tk):
         except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
             messagebox.showerror("Could not open EPUB", str(exc))
             return
+        if restore_from_path:
+            restore_book_state_for_moved_file(self.state, restore_from_path, path)
         self.book = book
         self.current_key = self._book_key(path)
+        remember_last_opened_book(self.state, path, book.title)
+        try:
+            self._save_state()
+        except OSError:
+            pass
+        self._refresh_resume_ui()
         st = self._book_state()
         self.index = max(0, min(len(book.chapters) - 1, int(st.get("chapter", 0))))
         self.rendered_book_key = None
