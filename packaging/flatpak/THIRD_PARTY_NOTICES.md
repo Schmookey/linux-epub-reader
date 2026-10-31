@@ -1,6 +1,6 @@
 # Third-party notices for the standalone Flatpak
 
-Linux EPUB Reader's original project code is licensed under GNU GPL version 3 only (GPL-3.0-only); see the repository's `LICENSE` file. This licence does not replace the separate licences of bundled third-party components. That licence does not replace the separate licences of bundled third-party components.
+Linux EPUB Reader's original project code is licensed under GNU GPL version 3 only (GPL-3.0-only); see the repository's `LICENSE` file. This licence does not replace the separate licences of bundled third-party components.
 
 The Flatpak build includes these additional components:
 
