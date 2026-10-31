@@ -369,7 +369,7 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
     def _method_source(self, method_name, next_method_name):
         source = Path(reader.__file__).read_text(encoding="utf-8")
         start = source.index(f"    def {method_name}(")
-        end = source.index(f"\\n    def {next_method_name}(", start)
+        end = source.index(f"\n    def {next_method_name}(", start)
         return source[start:end]
 
     def test_reader_widgets_are_packed_before_heading_is_inserted(self):
