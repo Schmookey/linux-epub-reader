@@ -21,4 +21,4 @@ Please add or update synthetic tests for parsing and file-detection changes. The
 
 ## Licence
 
-The project licence has not yet been selected. Until the owner adds one, please do not assume contributions can be redistributed under a particular licence. The licence must be resolved before external contributions can be merged.
+Linux EPUB Reader's original project code is distributed under GNU GPL version 3 only (GPL-3.0-only). By submitting a contribution that you have the right to license, you agree that it may be distributed as part of this project under GPL-3.0-only. You retain copyright in your contribution. Please do not submit code or assets that you do not have permission to license under these terms.

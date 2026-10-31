@@ -1,6 +1,6 @@
 # Linux EPUB Reader
 
-A local-first, text-oriented EPUB reader for Linux with a modern dark interface, a left-hand contents panel and Linux Mint-green accents. Original project materials are offered under CC BY-NC-SA 4.0; see LICENSE and LICENSE_STATUS.md for scope and limitations.
+A local-first, text-oriented EPUB reader for Linux with a modern dark interface, a left-hand contents panel and Linux Mint-green accents. The original Linux EPUB Reader project code is licensed under GNU GPL v3.0 only; see LICENSE and LICENSE_STATUS.md. Third-party components retain their own licences.
 
 > Status: early release for desktop testing. This is not a browser-grade EPUB renderer, and native Adobe DRM support is not implemented.
 
@@ -75,4 +75,4 @@ Please read CONTRIBUTING.md and the issue templates under .github/ISSUE_TEMPLATE
 
 ## Licence
 
-The project owner selected Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) for original project materials, subject to the scope notes in LICENSE. This does not cover third-party components or books opened with the app. Creative Commons advises against using CC licences for software; the NonCommercial condition may also limit acceptance by some software catalogues. This project should not be represented as OSI-approved open source. See the Creative Commons FAQ at https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software.
+Linux EPUB Reader's original project code is licensed under the GNU General Public License, version 3 only (GPL-3.0-only). See the full text in LICENSE. This licence applies to the project's original code; third-party libraries, bundled components, fonts, trademarks and books opened with the application remain subject to their own licences and terms. The project does not grant rights to content opened with the reader.
