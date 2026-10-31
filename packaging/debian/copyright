@@ -4,11 +4,9 @@ Source: https://github.com/Schmookey/linux-epub-reader
 
 Files: *
 Copyright: 2026 Linux EPUB Reader project contributors
-License: GPL-3.0-only
- This package's original project code is licensed under the GNU General
- Public License, version 3 only. The complete licence text is installed
- in /usr/share/doc/linux-epub-reader/LICENSE.
+License: GPL-3
+ The package's original project code is licensed under GNU GPL version 3
+ only (GPL-3.0-only).
  .
- On Debian systems, the standard GPL version 3 text is also available
- in /usr/share/common-licenses/GPL-3.
-
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 is available in /usr/share/common-licenses/GPL-3.
