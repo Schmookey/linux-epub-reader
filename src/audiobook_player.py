@@ -62,10 +62,12 @@ def chapter_rows(chapters):
 class MPVBackend:
     """Small synchronous controller for one private mpv audio-only process."""
 
-    def __init__(self, executable=None, startup_timeout=5.0, command_timeout=2.0):
+    def __init__(self, executable=None, startup_timeout=5.0, command_timeout=2.0,
+                 audio_output=None):
         self.executable = executable or shutil.which("mpv")
         self.startup_timeout = float(startup_timeout)
         self.command_timeout = float(command_timeout)
+        self.audio_output = audio_output
         self.process = None
         self._runtime_dir = None
         self._socket_path = None
@@ -100,6 +102,8 @@ class MPVBackend:
             "--pause=yes",
             f"--input-ipc-server={self._socket_path}",
         ]
+        if self.audio_output:
+            command.append(f"--ao={self.audio_output}")
         try:
             self.process = subprocess.Popen(
                 command, stdin=subprocess.DEVNULL,
