@@ -294,6 +294,17 @@ def last_opened_item_info(state):
     return {"type": item["type"], "path": path, "title": title}
 
 
+def audiobook_records(state):
+    """Return the audiobook progress dictionary, repairing only a malformed field."""
+    if not isinstance(state, dict):
+        return {}
+    records = state.get("audiobooks")
+    if not isinstance(records, dict):
+        records = {}
+        state["audiobooks"] = records
+    return records
+
+
 def restore_book_state_for_moved_file(state, old_path, new_path):
     """Copy saved position/bookmarks to a user-selected replacement path.
 
@@ -1328,7 +1339,7 @@ class Reader(tk.Tk):
         self.audio_path = path
         self.audio_title = os.path.splitext(os.path.basename(path))[0]
         self.audio_is_active = True
-        records = self.state.setdefault("audiobooks", {})
+        records = audiobook_records(self.state)
         key = os.path.abspath(path)
         record = records.get(key, {})
         if not isinstance(record, dict):
@@ -1451,7 +1462,7 @@ class Reader(tk.Tk):
             position = max(0.0, float(status.get("time_pos") or 0))
             duration = max(0.0, float(status.get("duration") or 0))
             chapter = max(0, int(status.get("chapter") or 0))
-            record = self.state.setdefault("audiobooks", {}).setdefault(os.path.abspath(self.audio_path), {})
+            record = audiobook_records(self.state).setdefault(os.path.abspath(self.audio_path), {})
             record.update({"path": self.audio_path, "title": self.audio_title,
                            "position": position, "duration": duration, "chapter": chapter})
             current_item = last_opened_item_info(self.state)
