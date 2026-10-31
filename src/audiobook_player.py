@@ -117,7 +117,11 @@ class MPVBackend:
                 if self.process.poll() is not None:
                     raise AudiobookError("The audiobook playback engine stopped unexpectedly.")
                 if os.path.exists(self._socket_path):
-                    return
+                    try:
+                        self._connect_ipc()
+                        return
+                    except OSError:
+                        self._disconnect_ipc()
                 time.sleep(0.05)
             raise AudiobookError("The audiobook playback engine did not become ready.")
         except Exception:
