@@ -689,6 +689,7 @@ class Reader(tk.Tk):
         self.audio_chapters = []
         self.audio_screen = None
         self.audio_is_active = False
+        self.audio_seeking = False
         self.index = 0
         self.font_size = 11
         self.line_spacing = 1.5
@@ -1261,6 +1262,7 @@ class Reader(tk.Tk):
             variable=self.audio_position_var, command=self._audio_seek_preview,
         )
         self.audio_seek.pack(fill=tk.X, padx=24)
+        self.audio_seek.bind("<ButtonPress-1>", self._audio_seek_start)
         self.audio_seek.bind("<ButtonRelease-1>", self._audio_seek_commit)
         self.audio_time_label = tk.Label(
             panel, text="0:00 elapsed  ·  0:00 remaining", bg=PANEL_BG,
@@ -1375,12 +1377,16 @@ class Reader(tk.Tk):
         if self.audio_seek.instate(["!disabled"]):
             self.audio_time_label.configure(text=f"Seek to {format_time(value)}")
 
+    def _audio_seek_start(self, _event=None):
+        self.audio_seeking = True
+
     def _audio_seek_commit(self, _event=None):
         if self.audio_backend and self.audio_path:
             try:
                 self.audio_backend.seek(self.audio_position_var.get())
             except AudiobookError as exc:
                 messagebox.showerror("Seek problem", str(exc), parent=self)
+        self.audio_seeking = False
 
     def _audio_update_tick(self):
         if not self.audio_is_active or not self.audio_backend:
@@ -1393,7 +1399,7 @@ class Reader(tk.Tk):
             chapters = status.get("chapters", [])
             if chapters and chapters != self.audio_chapters:
                 self._refresh_audio_chapters(chapters)
-            if duration > 0:
+            if duration > 0 and not self.audio_seeking:
                 self.audio_seek.configure(to=duration)
                 self.audio_position_var.set(position)
                 self.audio_time_label.configure(
@@ -1758,6 +1764,7 @@ class Reader(tk.Tk):
         self._restore_reader_content_layout()
         self.current_key = self._book_key(path)
         remember_last_opened_book(self.state, path, book.title)
+        self.state["last_opened_item"] = {"type": "epub", "path": path, "title": book.title}
         try:
             self._save_state()
         except OSError:
