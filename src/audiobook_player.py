@@ -72,6 +72,8 @@ class MPVBackend:
         self._runtime_dir = None
         self._socket_path = None
         self._request_id = 0
+        self._ipc_socket = None
+        self._ipc_buffer = bytearray()
         self.current_path = None
 
     @property
@@ -122,6 +124,22 @@ class MPVBackend:
             self.close()
             raise
 
+    def _connect_ipc(self):
+        """Connect once and retain the private mpv IPC stream for this session."""
+        if self._ipc_socket is not None:
+            return
+        if not self._socket_path:
+            raise AudiobookError("The audiobook playback engine is not running.")
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.settimeout(self.command_timeout)
+        try:
+            connection.connect(self._socket_path)
+        except OSError:
+            connection.close()
+            raise
+        self._ipc_socket = connection
+        self._ipc_buffer = bytearray()
+
     def _request(self, payload):
         if not self._socket_path:
             raise AudiobookError("The audiobook playback engine is not running.")
@@ -129,29 +147,43 @@ class MPVBackend:
         request_id = self._request_id
         message = dict(payload)
         message["request_id"] = request_id
-        encoded = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(self.command_timeout)
-            connection.connect(self._socket_path)
-            connection.sendall(encoded)
-            received = bytearray()
-            while b"\\n" not in received:
-                chunk = connection.recv(65536)
+        encoded = (json.dumps(message, ensure_ascii=False) + "\\n").encode("utf-8")
+        try:
+            self._connect_ipc()
+            self._ipc_socket.sendall(encoded)
+            while True:
+                while b"\\n" in self._ipc_buffer:
+                    line, _, remainder = self._ipc_buffer.partition(b"\\n")
+                    self._ipc_buffer = bytearray(remainder)
+                    try:
+                        response = json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    # Ignore asynchronous mpv events; wait for this command's reply.
+                    if response.get("request_id") != request_id:
+                        if "request_id" in response or "error" not in response:
+                            continue
+                    if response.get("error") != "success":
+                        raise AudiobookError(
+                            str(response.get("error") or "The playback command failed.")
+                        )
+                    return response.get("data")
+                chunk = self._ipc_socket.recv(65536)
                 if not chunk:
-                    break
-                received.extend(chunk)
-        for line in received.splitlines():
+                    raise AudiobookError("The playback engine closed its IPC connection.")
+                self._ipc_buffer.extend(chunk)
+        except (OSError, socket.timeout):
+            self._disconnect_ipc()
+            raise
+
+    def _disconnect_ipc(self):
+        connection, self._ipc_socket = self._ipc_socket, None
+        self._ipc_buffer = bytearray()
+        if connection is not None:
             try:
-                response = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                continue
-            if response.get("request_id") == request_id:
-                if response.get("error") != "success":
-                    raise AudiobookError(
-                        str(response.get("error") or "The playback command failed.")
-                    )
-                return response.get("data")
-        raise AudiobookError("The playback engine did not return a valid response.")
+                connection.close()
+            except OSError:
+                pass
 
     def command(self, *arguments):
         return self._request({"command": list(arguments)})
@@ -229,6 +261,7 @@ class MPVBackend:
         }
 
     def close(self):
+        self._disconnect_ipc()
         process, self.process = self.process, None
         if process and process.poll() is None:
             try:
