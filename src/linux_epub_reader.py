@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: CC-BY-NC-SA-4.0
+# Copyright (C) 2026 Linux EPUB Reader project contributors
+# SPDX-License-Identifier: GPL-3.0-only
 """Linux EPUB Reader v0.13.9 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
