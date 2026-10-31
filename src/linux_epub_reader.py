@@ -1482,7 +1482,7 @@ class Reader(tk.Tk):
             try:
                 self.audio_backend.seek(0)
                 self.audio_backend.pause()
-                record = self.state.setdefault("audiobooks", {}).setdefault(
+                record = audiobook_records(self.state).setdefault(
                     os.path.abspath(self.audio_path), {}
                 )
                 record.update({
@@ -1883,7 +1883,7 @@ class Reader(tk.Tk):
         )
         if selected:
             selected = os.path.abspath(selected)
-            records = self.state.setdefault("audiobooks", {})
+            records = audiobook_records(self.state)
             previous = records.get(path)
             if isinstance(previous, dict) and selected not in records:
                 restored = dict(previous)
