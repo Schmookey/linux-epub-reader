@@ -27,6 +27,71 @@ MUTED_TEXT = "#AEB4BD"
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "linux-epub-reader")
 STATE_FILE = os.path.join(STATE_DIR, "reading_state.json")
 LEGACY_STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "mint-epub-reader")
+
+def _unique_state_backup_path(path):
+    """Choose a backup name without replacing an earlier recovery copy."""
+    base = path + ".corrupt"
+    candidate = base
+    suffix = 1
+    while os.path.exists(candidate):
+        candidate = f"{base}.{suffix}"
+        suffix += 1
+    return candidate
+
+
+def load_state_file(path):
+    """Load saved state, preserving unreadable or structurally invalid files.
+
+    Returns (state, backup_path, writes_blocked, message). A failed backup or
+    an ordinary I/O error blocks writes so the original file cannot be lost.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+    except FileNotFoundError:
+        return {"books": {}}, None, False, ""
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        problem = f"The saved-reading file is not valid JSON: {exc}"
+    except OSError as exc:
+        return {"books": {}}, None, True, f"The saved-reading file could not be read: {exc}"
+    else:
+        if isinstance(state, dict) and isinstance(state.get("books", {}), dict):
+            return state, None, False, ""
+        problem = "The saved-reading file has an invalid structure."
+
+    try:
+        backup_path = _unique_state_backup_path(path)
+        shutil.copy2(path, backup_path)
+    except OSError as exc:
+        return (
+            {"books": {}}, None, True,
+            f"{problem}\nA safety copy could not be created: {exc}\n"
+            "Saving is disabled to protect the original file.",
+        )
+    return (
+        {"books": {}}, backup_path, False,
+        f"{problem}\nA safety copy was created at:\n{backup_path}",
+    )
+
+
+def save_state_file(state, path):
+    """Write state atomically, cleaning up the temporary file after failures."""
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    temporary_path = path + ".tmp"
+    try:
+        with open(temporary_path, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    except Exception:
+        try:
+            os.unlink(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
+
 DEFAULT_BG = "#000000"
 DEFAULT_FG = "#E0E0E0"
 FONT_NAME = "Atkinson Hyperlegible"
@@ -616,6 +681,9 @@ class Reader(tk.Tk):
         self.column_width = 700
         self.is_fullscreen = False
         migrate_legacy_state()
+        self._state_recovery_backup = None
+        self._state_write_blocked = False
+        self._state_recovery_message = ""
         self.state = self._load_state()
         self.hide_fullscreen_hint_var = tk.BooleanVar(
             value=bool(self.state.get("hide_fullscreen_hint", False))
@@ -638,6 +706,12 @@ class Reader(tk.Tk):
         self._welcome_cover_photo = None
         self._build_ui()
         self._refresh_resume_ui()
+        if self._state_recovery_message:
+            messagebox.showwarning(
+                "Saved reading data needs attention",
+                self._state_recovery_message,
+                parent=self,
+            )
         self.bind("<Control-o>", lambda _e: self.open_dialog())
         self.bind("<Control-f>", lambda _e: self.search_dialog())
         self.bind("<Control-b>", lambda _e: self.add_bookmark())
@@ -648,15 +722,19 @@ class Reader(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _load_state(self):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f: return json.load(f)
-        except (OSError, ValueError): return {"books": {}}
+        state, backup_path, writes_blocked, message = load_state_file(STATE_FILE)
+        self._state_recovery_backup = backup_path
+        self._state_write_blocked = writes_blocked
+        self._state_recovery_message = message
+        return state
 
     def _save_state(self):
-        os.makedirs(STATE_DIR, exist_ok=True)
-        tmp = STATE_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f: json.dump(self.state, f, indent=2)
-        os.replace(tmp, STATE_FILE)
+        if self._state_write_blocked:
+            raise OSError(
+                "Saving is disabled because the original reading-state file "
+                "could not be safely backed up or read."
+            )
+        save_state_file(self.state, STATE_FILE)
 
     def _book_key(self, path):
         return book_state_key(path)
