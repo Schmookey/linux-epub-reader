@@ -134,6 +134,7 @@ class MPVBackend:
         message = dict(payload)
         message["request_id"] = request_id
         encoded = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
+        last_messages = []
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(self.command_timeout)
             connection.connect(self._socket_path)
@@ -151,16 +152,33 @@ class MPVBackend:
                         response = json.loads(line.decode("utf-8"))
                     except (UnicodeDecodeError, json.JSONDecodeError):
                         continue
-                    # mpv can emit asynchronous events on this connection.
-                    # Ignore them until the reply matching this request arrives.
+                    last_messages.append(response)
+                    # Events have an event field but no error field. Ignore
+                    # them and accept the matching command response. Some
+                    # mpv builds omit request_id, so accept an untagged reply
+                    # on this one-command private connection as a fallback.
                     if response.get("request_id") != request_id:
-                        continue
+                        if "request_id" in response or "error" not in response:
+                            continue
                     if response.get("error") != "success":
                         raise AudiobookError(
                             str(response.get("error") or "The playback command failed.")
                         )
                     return response.get("data")
-        raise AudiobookError("The playback engine did not return a valid response.")
+        if received:
+            try:
+                response = json.loads(received.decode("utf-8"))
+                last_messages.append(response)
+                if "request_id" not in response and "error" in response:
+                    if response.get("error") != "success":
+                        raise AudiobookError(str(response.get("error")))
+                    return response.get("data")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
+        raise AudiobookError(
+            "The playback engine did not return a valid response "
+            f"(messages: {last_messages[-3:]!r})."
+        )
 
     def command(self, *arguments):
         return self._request({"command": list(arguments)})
