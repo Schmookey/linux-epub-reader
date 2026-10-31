@@ -142,7 +142,7 @@ modules:
   - name: mpv
     buildsystem: meson
     post-install:
-      - install -Dm644 LICENSE.LGPL ${FLATPAK_DEST}/share/licenses/mpv/LICENSE.LGPL
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/LICENSE.LGPL ${FLATPAK_DEST}/share/licenses/mpv/LICENSE.LGPL
     config-opts:
       - -Dcplayer=true
       - -Dlibmpv=false
