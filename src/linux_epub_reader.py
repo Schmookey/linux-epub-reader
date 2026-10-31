@@ -1311,11 +1311,19 @@ class Reader(tk.Tk):
         if os.path.splitext(path)[1].lower() != ".m4b" or not os.path.isfile(path):
             messagebox.showerror("Cannot open audiobook", "Please choose an existing local M4B file.", parent=self)
             return
+        if self.audio_tick_id:
+            try:
+                self.after_cancel(self.audio_tick_id)
+            except tk.TclError:
+                pass
+            self.audio_tick_id = None
         self._save_audio_position()
         try:
             status = self.audio_backend.load(path)
         except (AudiobookError, OSError) as exc:
             messagebox.showerror("Could not open audiobook", str(exc), parent=self)
+            if self.audio_is_active:
+                self._audio_update_tick()
             return
         self.audio_path = path
         self.audio_title = os.path.splitext(os.path.basename(path))[0]
@@ -1463,8 +1471,15 @@ class Reader(tk.Tk):
             try:
                 self.audio_backend.seek(0)
                 self.audio_backend.pause()
-                self._save_audio_position()
-            except AudiobookError:
+                record = self.state.setdefault("audiobooks", {}).setdefault(
+                    os.path.abspath(self.audio_path), {}
+                )
+                record.update({
+                    "path": self.audio_path, "title": self.audio_title,
+                    "position": 0.0, "chapter": 0,
+                })
+                self._save_state()
+            except (AudiobookError, OSError):
                 pass
         self.audio_play_button.configure(text="Play")
         self.audio_position_var.set(0)
