@@ -365,10 +365,42 @@ class ResumeLastBookTests(unittest.TestCase):
             self.assertNotIn("\\n", existing_message)
 
 
+class ReaderLayoutRegressionTests(unittest.TestCase):
+    def _method_source(self, method_name, next_method_name):
+        source = Path(reader.__file__).read_text(encoding="utf-8")
+        start = source.index(f"    def {method_name}(")
+        end = source.index(f"\n    def {next_method_name}(", start)
+        return source[start:end]
+
+    def test_reader_widgets_are_packed_before_heading_is_inserted(self):
+        method = self._method_source(
+            "_restore_reader_content_layout", "open_book"
+        )
+        self.assertIn("if self.book is None:", method)
+        self.assertLess(
+            method.index("self.text_frame.pack("),
+            method.index("self.heading.pack("),
+        )
+
+    def test_open_book_uses_safe_reader_layout_restoration(self):
+        method = self._method_source("open_book", "_populate_toc")
+        self.assertIn("self._restore_reader_content_layout()", method)
+        self.assertNotIn("self.heading.pack(", method)
+
+    def test_fullscreen_exit_does_not_pack_hidden_welcome_widgets(self):
+        method = self._method_source("exit_fullscreen", "change_font")
+        self.assertIn("self._restore_reader_content_layout()", method)
+        self.assertNotIn("self.heading.pack(", method)
+        self.assertLess(
+            method.index("self._restore_reader_content_layout()"),
+            method.index("self.toolbar.pack("),
+        )
+
+
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.9")
+        self.assertEqual(reader.APP_VERSION, "0.13.10")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:

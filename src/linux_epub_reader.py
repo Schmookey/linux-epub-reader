@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.9"
+APP_VERSION = "0.13.10"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -1476,6 +1476,15 @@ class Reader(tk.Tk):
         if selected:
             self.open_book(selected, restore_from_path=path)
 
+    def _restore_reader_content_layout(self):
+        """Restore reader widgets in a safe order, leaving the welcome panel alone."""
+        if self.book is None:
+            return
+        if self.text_frame.winfo_manager() != "pack":
+            self.text_frame.pack(fill=tk.BOTH, expand=True)
+        if self.heading.winfo_manager() != "pack":
+            self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12), before=self.text_frame)
+
     def open_book(self, path, restore_from_path=None, loaded_book=None):
         path = os.path.abspath(os.path.expanduser(path))
         drm_type = detect_drm_input(path)
@@ -1493,8 +1502,7 @@ class Reader(tk.Tk):
         self.last_book_preview = None
         self.last_book_preview_path = ""
         self.welcome_view.pack_forget()
-        self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12), before=self.text_frame)
-        self.text_frame.pack(fill=tk.BOTH, expand=True)
+        self._restore_reader_content_layout()
         self.current_key = self._book_key(path)
         remember_last_opened_book(self.state, path, book.title)
         try:
@@ -1671,7 +1679,7 @@ class Reader(tk.Tk):
         self.panes.pack_configure(padx=10, pady=(8, 6))
         self.right.configure(padding=6)
         self._ensure_toc_left()
-        self.heading.pack(fill=tk.X, anchor="w", pady=(0, 8), before=self.text_frame)
+        self._restore_reader_content_layout()
         self.text.configure(padx=22, pady=20)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.toolbar.pack(fill=tk.X, before=self.panes)
