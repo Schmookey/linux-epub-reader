@@ -95,6 +95,7 @@ class MPVBackend:
             "--force-window=no",
             "--no-video",
             "--audio-display=no",
+            "--demuxer-lavf-o=protocol_whitelist=file",
             "--terminal=no",
             "--pause=yes",
             f"--input-ipc-server={self._socket_path}",
