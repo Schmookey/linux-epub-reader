@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.10-1 — Resume and full-screen layout fixes
+
+- Restore the reader text frame before packing its chapter heading, preventing Tkinter pack-order errors when resuming a book from the welcome-back panel.
+- Keep the illustrated welcome-back panel intact when entering and leaving full-screen without an open book.
+- Restore the reader heading, toolbar and normal window controls reliably when leaving full-screen with a book open.
+- Add regression tests for welcome-back resume layout and full-screen exit.
+
 ## 0.13.9-1 — Illustrated welcome-back panel
 
 - Replace the title-only welcome-back message with a book panel showing the front cover, title, author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
