@@ -1502,6 +1502,19 @@ class Reader(tk.Tk):
             self.audio_tick_id = None
         self.audio_screen.pack_forget()
         if self.book:
+            # Returning to the EPUB screen makes that book the active item
+            # again; keep audiobook progress separately without overriding it.
+            self.state["last_opened_item"] = {
+                "type": "epub", "path": self.book.path, "title": self.book.title
+            }
+            self.resume_button.configure(
+                text="Resume last book", command=self.resume_last_book,
+                state=tk.NORMAL,
+            )
+            try:
+                self._save_state()
+            except OSError:
+                pass
             self._restore_reader_content_layout()
         else:
             self._refresh_resume_ui()
