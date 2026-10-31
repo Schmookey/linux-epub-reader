@@ -24,6 +24,40 @@ def make_epub(path):
             archive.writestr(name, data)
 
 
+class LastOpenedItemTests(unittest.TestCase):
+    def test_valid_audiobook_item_is_returned_with_absolute_path(self):
+        item = reader.last_opened_item_info({
+            "last_opened_item": {
+                "type": "audiobook", "path": "~/Books/example.m4b", "title": "Example"
+            }
+        })
+        self.assertEqual(item["type"], "audiobook")
+        self.assertEqual(item["path"], os.path.abspath(os.path.expanduser("~/Books/example.m4b")))
+        self.assertEqual(item["title"], "Example")
+
+    def test_valid_epub_item_is_returned(self):
+        item = reader.last_opened_item_info({
+            "last_opened_item": {"type": "epub", "path": "/books/example.epub"}
+        })
+        self.assertEqual(item, {
+            "type": "epub", "path": "/books/example.epub", "title": "example.epub"
+        })
+
+    def test_invalid_or_legacy_item_is_ignored(self):
+        for value in (
+            None, [], {}, {"type": "mp3", "path": "/books/example.mp3"},
+            {"type": "audiobook", "path": ""}, {"type": "epub", "path": None},
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(reader.last_opened_item_info({"last_opened_item": value}))
+
+    def test_legacy_reading_state_is_not_changed(self):
+        state = {"books": {"old-key": {"chapter": 2}}, "last_opened_book": "/old.epub"}
+        self.assertIsNone(reader.last_opened_item_info(state))
+        self.assertEqual(state["books"]["old-key"]["chapter"], 2)
+        self.assertEqual(state["last_opened_book"], "/old.epub")
+
+
 class ReadingStateFileTests(unittest.TestCase):
     def test_missing_state_file_starts_with_empty_state(self):
         with tempfile.TemporaryDirectory() as directory:
