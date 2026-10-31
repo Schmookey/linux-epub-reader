@@ -62,7 +62,7 @@ def chapter_rows(chapters):
 class MPVBackend:
     """Small synchronous controller for one private mpv audio-only process."""
 
-    def __init__(self, executable=None, startup_timeout=5.0, command_timeout=2.0,
+    def __init__(self, executable=None, startup_timeout=5.0, command_timeout=5.0,
                  audio_output=None):
         self.executable = executable or shutil.which("mpv")
         self.startup_timeout = float(startup_timeout)
@@ -115,16 +115,10 @@ class MPVBackend:
                 if self.process.poll() is not None:
                     raise AudiobookError("The audiobook playback engine stopped unexpectedly.")
                 if os.path.exists(self._socket_path):
-                    # The socket path is created only after mpv has bound its
-                    # IPC listener. Probe the connection without issuing a
-                    # property request; some mpv builds report idle properties
-                    # differently before the first file is loaded.
                     try:
-                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
-                            probe.settimeout(0.2)
-                            probe.connect(self._socket_path)
+                        self._request({"command": ["get_property", "idle-active"]})
                         return
-                    except (OSError, socket.timeout):
+                    except (OSError, AudiobookError, socket.timeout):
                         pass
                 time.sleep(0.05)
             raise AudiobookError("The audiobook playback engine did not become ready.")
@@ -140,51 +134,28 @@ class MPVBackend:
         message = dict(payload)
         message["request_id"] = request_id
         encoded = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
-        last_messages = []
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(self.command_timeout)
             connection.connect(self._socket_path)
             connection.sendall(encoded)
             received = bytearray()
-            while True:
+            while b"\\n" not in received:
                 chunk = connection.recv(65536)
                 if not chunk:
                     break
                 received.extend(chunk)
-                while b"\\n" in received:
-                    line, _, remainder = received.partition(b"\\n")
-                    received = bytearray(remainder)
-                    try:
-                        response = json.loads(line.decode("utf-8"))
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        continue
-                    last_messages.append(response)
-                    # Events have an event field but no error field. Ignore
-                    # them and accept the matching command response. Some
-                    # mpv builds omit request_id, so accept an untagged reply
-                    # on this one-command private connection as a fallback.
-                    if response.get("request_id") != request_id:
-                        if "request_id" in response or "error" not in response:
-                            continue
-                    if response.get("error") != "success":
-                        raise AudiobookError(
-                            str(response.get("error") or "The playback command failed.")
-                        )
-                    return response.get("data")
-        if received:
+        for line in received.splitlines():
             try:
-                response = json.loads(received.decode("utf-8"))
-                last_messages.append(response)
-                if "request_id" not in response and "error" in response:
-                    if response.get("error") != "success":
-                        raise AudiobookError(str(response.get("error")))
-                    return response.get("data")
+                response = json.loads(line.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                pass
-        raise AudiobookError(
-            "The playback engine did not return a valid response "
-            f"(messages: {last_messages[-3:]!r})."
-        )
+                continue
+            if response.get("request_id") == request_id:
+                if response.get("error") != "success":
+                    raise AudiobookError(
+                        str(response.get("error") or "The playback command failed.")
+                    )
+                return response.get("data")
+        raise AudiobookError("The playback engine did not return a valid response.")
 
     def command(self, *arguments):
         return self._request({"command": list(arguments)})
