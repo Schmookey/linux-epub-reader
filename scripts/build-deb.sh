@@ -13,7 +13,8 @@ PKG="linux-epub-reader"
 rm -rf "$PKGROOT"
 install -d "$PKGROOT/DEBIAN" "$PKGROOT/usr/lib/linux-epub-reader/src" "$PKGROOT/usr/bin" "$PKGROOT/usr/share/applications" "$PKGROOT/usr/share/icons/hicolor/scalable/apps" "$PKGROOT/usr/share/doc/$PKG"
 install -m 0644 "$ROOT/src/linux_epub_reader.py" "$PKGROOT/usr/lib/linux-epub-reader/src/linux_epub_reader.py"
-install -m 0644 "$ROOT/LICENSE" "$PKGROOT/usr/share/doc/$PKG/copyright"
+install -m 0644 "$ROOT/packaging/debian/copyright" "$PKGROOT/usr/share/doc/$PKG/copyright"
+install -m 0644 "$ROOT/LICENSE" "$PKGROOT/usr/share/doc/$PKG/LICENSE"
 cat > "$PKGROOT/usr/bin/linux-epub-reader" <<'WRAPPER'
 #!/usr/bin/env sh
 exec /usr/bin/python3 /usr/lib/linux-epub-reader/src/linux_epub_reader.py "$@"
