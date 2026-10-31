@@ -190,7 +190,8 @@ class MPVBackend:
     def play_pause(self):
         paused = bool(self._request({"command": ["get_property", "pause"]}))
         self.command("set_property", "pause", not paused)
-        return not paused
+        # Return whether playback is active after the toggle (True = playing).
+        return paused
 
     def pause(self):
         self.command("set_property", "pause", True)
