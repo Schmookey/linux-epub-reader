@@ -111,7 +111,7 @@ jobs:
           flatpak run --user --command=mpv "$APP_ID" --version
           mkdir -p "$HOME/.local/share/linux-epub-reader"
           ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
-          flatpak run --user --command=python3.15 "$APP_ID" -c 'import os; from audiobook_player import MPVBackend; path=os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b"); player=MPVBackend(audio_output="null", startup_timeout=8); status=player.load(path); assert float(status["duration"]) > 5; assert status["paused"]; player.seek(2); assert player.play_pause(); player.pause(); assert player.status()["paused"]; player.close(); print("Flatpak M4B playback, pause, seek and IPC passed")'
+          flatpak run --user --command=python3.15 "$APP_ID" -c 'import os, sys; sys.path.insert(0, "/app/lib/linux-epub-reader"); from audiobook_player import MPVBackend; path=os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b"); player=MPVBackend(audio_output="null", startup_timeout=8); status=player.load(path); assert float(status["duration"]) > 5; assert status["paused"]; player.seek(2); assert player.play_pause(); player.pause(); assert player.status()["paused"]; player.close(); print("Flatpak M4B playback, pause, seek and IPC passed")'
           rm -f "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
 
       - name: Save bundle as a workflow artifact
