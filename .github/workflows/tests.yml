@@ -20,9 +20,13 @@ jobs:
       - name: Report Python version
         run: python -VV
       - name: Check Python syntax
-        run: python -m py_compile src/linux_epub_reader.py src/audiobook_player.py tests/test_reader.py tests/test_audiobook_player.py
+        run: python -m py_compile src/linux_epub_reader.py src/audiobook_player.py tests/test_reader.py tests/test_audiobook_player.py tests/test_mpv_integration.py
       - name: Check build script syntax
         run: bash -n scripts/build-deb.sh
+      - name: Install audio integration test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mpv ffmpeg
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Build Debian package
