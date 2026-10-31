@@ -62,17 +62,25 @@ jobs:
           fi
 
           cat > release-notes.md <<'NOTES'
-          ## Illustrated welcome-back panel
+          ## Resume and full-screen fixes
 
-          This release adds a richer welcome-back page for continuing your last book.
+          This release fixes two important layout problems reported in version 0.13.9:
+          - The **Resume** button on the welcome-back panel and the toolbar's **Resume last book** action now restore the reader layout safely.
+          - Exiting full-screen no longer tries to display hidden welcome-page widgets, so the normal window title bar and minimise, maximise and close controls are restored correctly.
 
-          ### What's included
-          - Front-cover artwork on the welcome-back panel, with improved EPUB 2 and EPUB 3 cover detection.
+          ### Included features
+          - Front-cover artwork on the welcome-back panel, with EPUB 2 and EPUB 3 cover detection.
           - Book information including author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
           - Saved chapter, chapter position and estimated overall reading progress.
           - A prominent Linux Mint-green **Resume** button.
           - JPEG cover-image support through Pillow.
           - Improved recovery when the last book has moved or is no longer at its saved location.
+          - Regression tests covering the reader layout restoration and full-screen exit behaviour.
+
+          ### Verification
+          - Python compilation and build-script syntax checks pass.
+          - All 45 automated unit tests pass.
+          - The Debian package metadata is checked before publication.
 
           ### Reading data and privacy
           The reader keeps the last-book path, reading position and bookmarks in its existing local reading-state file. Book contents and reading history are not uploaded. The application remains designed for offline use.
