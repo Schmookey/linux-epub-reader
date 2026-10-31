@@ -24,6 +24,98 @@ def make_epub(path):
             archive.writestr(name, data)
 
 
+class ReadingStateFileTests(unittest.TestCase):
+    def test_missing_state_file_starts_with_empty_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            state, backup, blocked, message = reader.load_state_file(path)
+        self.assertEqual(state, {"books": {}})
+        self.assertIsNone(backup)
+        self.assertFalse(blocked)
+        self.assertEqual(message, "")
+
+    def test_valid_state_is_loaded_without_a_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            original = {"books": {"book-key": {"chapter": 3, "fraction": 0.4}}}
+            with open(path, "w", encoding="utf-8") as handle:
+                import json
+                json.dump(original, handle)
+            state, backup, blocked, message = reader.load_state_file(path)
+        self.assertEqual(state, original)
+        self.assertIsNone(backup)
+        self.assertFalse(blocked)
+        self.assertEqual(message, "")
+
+    def test_malformed_json_is_preserved_before_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            damaged = '{"books": {"unfinished": '
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(damaged)
+            state, backup, blocked, message = reader.load_state_file(path)
+            with open(backup, "r", encoding="utf-8") as handle:
+                preserved = handle.read()
+            with open(path, "r", encoding="utf-8") as handle:
+                original_still_intact = handle.read()
+        self.assertEqual(state, {"books": {}})
+        self.assertIsNotNone(backup)
+        self.assertEqual(preserved, damaged)
+        self.assertEqual(original_still_intact, damaged)
+        self.assertFalse(blocked)
+        self.assertIn(backup, message)
+
+    def test_existing_recovery_backup_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            first_backup = path + ".corrupt"
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("{broken")
+            with open(first_backup, "w", encoding="utf-8") as handle:
+                handle.write("earlier recovery")
+            _state, backup, blocked, _message = reader.load_state_file(path)
+            with open(first_backup, "r", encoding="utf-8") as handle:
+                earlier = handle.read()
+        self.assertEqual(backup, first_backup + ".1")
+        self.assertEqual(earlier, "earlier recovery")
+        self.assertFalse(blocked)
+
+    def test_invalid_state_structure_is_backed_up(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write('["not", "a", "state object"]')
+            state, backup, blocked, _message = reader.load_state_file(path)
+            with open(backup, "r", encoding="utf-8") as handle:
+                preserved = handle.read()
+        self.assertEqual(state, {"books": {}})
+        self.assertEqual(preserved, '["not", "a", "state object"]')
+        self.assertFalse(blocked)
+
+    def test_state_saves_atomically_as_valid_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            state = {"books": {"book-key": {"chapter": 2, "fraction": 0.75}}}
+            reader.save_state_file(state, path)
+            with open(path, "r", encoding="utf-8") as handle:
+                saved = __import__("json").load(handle)
+            self.assertEqual(saved, state)
+            self.assertFalse(os.path.exists(path + ".tmp"))
+
+    def test_failed_serialisation_does_not_replace_existing_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            original = '{"books": {"keep": true}}'
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(original)
+            with self.assertRaises(TypeError):
+                reader.save_state_file({"not_json": object()}, path)
+            with open(path, "r", encoding="utf-8") as handle:
+                preserved = handle.read()
+            self.assertFalse(os.path.exists(path + ".tmp"))
+        self.assertEqual(preserved, original)
+
+
 class CoverAndWelcomePanelDataTests(unittest.TestCase):
     def test_epub3_cover_image_is_extracted(self):
         with tempfile.TemporaryDirectory() as directory:
