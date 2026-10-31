@@ -93,4 +93,4 @@ jobs:
         run: |
           gh workflow run flatpak.yml --ref main \
             --field source_ref=main \
-            --field release_tag="${{ steps.package.outputs.app_version }}"
+            --field release_tag="v${{ steps.package.outputs.app_version }}"
