@@ -139,22 +139,27 @@ class MPVBackend:
             connection.connect(self._socket_path)
             connection.sendall(encoded)
             received = bytearray()
-            while b"\n" not in received:
+            while True:
                 chunk = connection.recv(65536)
                 if not chunk:
                     break
                 received.extend(chunk)
-        for line in received.splitlines():
-            try:
-                response = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                continue
-            if response.get("request_id") == request_id:
-                if response.get("error") != "success":
-                    raise AudiobookError(
-                        str(response.get("error") or "The playback command failed.")
-                    )
-                return response.get("data")
+                while b"\\n" in received:
+                    line, _, remainder = received.partition(b"\\n")
+                    received = bytearray(remainder)
+                    try:
+                        response = json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    # mpv can emit asynchronous events on this connection.
+                    # Ignore them until the reply matching this request arrives.
+                    if response.get("request_id") != request_id:
+                        continue
+                    if response.get("error") != "success":
+                        raise AudiobookError(
+                            str(response.get("error") or "The playback command failed.")
+                        )
+                    return response.get("data")
         raise AudiobookError("The playback engine did not return a valid response.")
 
     def command(self, *arguments):
