@@ -66,6 +66,18 @@ class LastOpenedItemTests(unittest.TestCase):
         self.assertEqual(state["books"]["old-key"]["chapter"], 2)
 
 
+    def test_malformed_per_book_audio_record_is_repaired_without_touching_other_records(self):
+        state = {
+            "books": {"old-key": {"chapter": 2}},
+            "audiobooks": {"/books/broken.m4b": "invalid", "/books/valid.m4b": {"position": 42}},
+        }
+        record = reader.audiobook_record(state, "/books/broken.m4b")
+        self.assertEqual(record, {})
+        self.assertIs(state["audiobooks"]["/books/broken.m4b"], record)
+        self.assertEqual(state["audiobooks"]["/books/valid.m4b"]["position"], 42)
+        self.assertEqual(state["books"]["old-key"]["chapter"], 2)
+
+
 class ReadingStateFileTests(unittest.TestCase):
     def test_missing_state_file_starts_with_empty_state(self):
         with tempfile.TemporaryDirectory() as directory:
