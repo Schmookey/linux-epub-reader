@@ -79,6 +79,8 @@ modules:
 
   # Bundled offline-only audio engine. FFmpeg has network protocols disabled.
   - name: ffmpeg
+    post-install:
+      - install -Dm644 COPYING.LGPLv2.1 ${FLATPAK_DEST}/share/licenses/ffmpeg/COPYING.LGPLv2.1
     cleanup:
       - /include
       - /lib/pkgconfig
@@ -96,6 +98,8 @@ modules:
 
   - name: libplacebo
     buildsystem: meson
+    post-install:
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/libplacebo/LICENSE
     config-opts:
       - -Dvulkan=enabled
       - -Dshaderc=disabled
@@ -122,6 +126,8 @@ modules:
         dest: 3rdparty/glad
 
   - name: libass
+    post-install:
+      - install -Dm644 COPYING ${FLATPAK_DEST}/share/licenses/libass/COPYING
     config-opts:
       - --disable-static
       - --enable-fontconfig
@@ -135,6 +141,8 @@ modules:
 
   - name: mpv
     buildsystem: meson
+    post-install:
+      - install -Dm644 LICENSE.LGPL ${FLATPAK_DEST}/share/licenses/mpv/LICENSE.LGPL
     config-opts:
       - -Dcplayer=true
       - -Dlibmpv=false
