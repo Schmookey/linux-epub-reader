@@ -6,10 +6,9 @@ on:
       - main
     paths:
       - .github/workflows/publish-release-v0.13.7.yml
-  workflow_dispatch:
-
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -87,3 +86,11 @@ jobs:
             --notes-file release-notes.md \
             --target "$GITHUB_SHA" \
             --latest
+
+      - name: Build Flatpak and attach it to the published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run flatpak.yml --ref main \
+            --field source_ref=main \
+            --field release_tag="${{ steps.package.outputs.app_version }}"
