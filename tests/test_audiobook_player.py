@@ -48,6 +48,53 @@ class AudiobookHelpersTests(unittest.TestCase):
         self.assertEqual(audio.chapter_rows(None), [])
 
 
+class IPCProtocolTests(unittest.TestCase):
+    def test_persistent_connection_ignores_events_and_matches_command_replies(self):
+        import json
+        import socket
+        import threading
+
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = os.path.join(directory, "mpv.sock")
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind(socket_path)
+            server.listen(1)
+            received = []
+
+            def serve():
+                connection, _ = server.accept()
+                with connection:
+                    stream = connection.makefile("rb")
+                    for _ in range(2):
+                        request = json.loads(stream.readline().decode("utf-8"))
+                        received.append(request)
+                        connection.sendall(
+                            (json.dumps({"event": "property-change", "name": "pause"}) + "\\n").encode()
+                        )
+                        connection.sendall(
+                            (json.dumps({
+                                "request_id": request["request_id"],
+                                "error": "success",
+                                "data": request["request_id"],
+                            }) + "\\n").encode()
+                        )
+                server.close()
+
+            thread = threading.Thread(target=serve, daemon=True)
+            thread.start()
+            backend = audio.MPVBackend(command_timeout=2)
+            backend._socket_path = socket_path
+            try:
+                self.assertEqual(backend.command("get_property", "pause"), 1)
+                self.assertEqual(backend.command("get_property", "duration"), 2)
+            finally:
+                backend._disconnect_ipc()
+                thread.join(timeout=2)
+            self.assertEqual(len(received), 2)
+            self.assertEqual(received[0]["command"], ["get_property", "pause"])
+            self.assertEqual(received[1]["command"], ["get_property", "duration"])
+
+
 class BackendCommandTests(unittest.TestCase):
     def make_backend(self):
         backend = audio.MPVBackend(executable="/usr/bin/mpv")
