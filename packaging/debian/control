@@ -1,12 +1,12 @@
 Package: linux-epub-reader
-Version: 0.13.3-1
+Version: 0.13.10-1
 Section: text
 Priority: optional
 Architecture: all
-Depends: python3, python3-tk
+Depends: python3, python3-tk, python3-pil, mpv
 Maintainer: Linux EPUB Reader contributors
 Description: Local-first dark-mode EPUB reader
  A text-oriented EPUB reader for Linux with continuous chapter scrolling,
- a left-hand table of contents, bookmarks and chapter progress.
+ a left-hand table of contents, bookmarks, chapter progress and local M4B audiobooks.
  .
  Adobe DRM is detected but not natively implemented in this application.\n .\n Protected books show an explanatory notice; no external reader is launched.
