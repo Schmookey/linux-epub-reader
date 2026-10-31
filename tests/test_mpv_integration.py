@@ -21,9 +21,9 @@ class MPVIntegrationTests(unittest.TestCase):
         cls.media_path = str(Path(cls.directory.name) / "integration-test.m4b")
         cls.metadata_path = str(Path(cls.directory.name) / "chapters.ffmeta")
         Path(cls.metadata_path).write_text(
-            ";FFMETADATA1\\n"
-            "[CHAPTER]\\nTIMEBASE=1/1\\nSTART=0\\nEND=3\\ntitle=Opening\\n"
-            "[CHAPTER]\\nTIMEBASE=1/1\\nSTART=3\\nEND=6\\ntitle=Second chapter\\n",
+            ";FFMETADATA1\n"
+            "[CHAPTER]\nTIMEBASE=1/1\nSTART=0\nEND=3\ntitle=Opening\n"
+            "[CHAPTER]\nTIMEBASE=1/1\nSTART=3\nEND=6\ntitle=Second chapter\n",
             encoding="utf-8",
         )
         subprocess.run([
