@@ -195,6 +195,9 @@ class MPVBackend:
     def load(self, path):
         local_path = normalise_m4b_path(path)
         self.start()
+        # Pause the current session before replacing media so opening a second
+        # audiobook can never briefly start it playing automatically.
+        self.command("set_property", "pause", True)
         self.command("loadfile", local_path, "replace")
         self.command("set_property", "pause", True)
         self.current_path = local_path
