@@ -47,6 +47,9 @@ class MPVIntegrationTests(unittest.TestCase):
         self.backend.pause()
         self.assertTrue(self.backend.status().get("paused"))
         self.assertGreaterEqual(float(self.backend.status().get("time_pos") or 0), 1.5)
+        # Replacing a currently loaded item must not briefly autoplay it.
+        replacement = self.backend.load(self.media_path)
+        self.assertTrue(replacement.get("paused"))
 
 
 if __name__ == "__main__":
