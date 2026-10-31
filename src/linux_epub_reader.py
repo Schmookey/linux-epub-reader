@@ -1261,6 +1261,7 @@ class Reader(tk.Tk):
             variable=self.audio_position_var, command=self._audio_seek_preview,
         )
         self.audio_seek.pack(fill=tk.X, padx=24)
+        self.audio_seek.bind("<ButtonRelease-1>", self._audio_seek_commit)
         self.audio_time_label = tk.Label(
             panel, text="0:00 elapsed  ·  0:00 remaining", bg=PANEL_BG,
             fg=MUTED_TEXT, font=("Sans", 9),
@@ -1373,6 +1374,13 @@ class Reader(tk.Tk):
     def _audio_seek_preview(self, value):
         if self.audio_seek.instate(["!disabled"]):
             self.audio_time_label.configure(text=f"Seek to {format_time(value)}")
+
+    def _audio_seek_commit(self, _event=None):
+        if self.audio_backend and self.audio_path:
+            try:
+                self.audio_backend.seek(self.audio_position_var.get())
+            except AudiobookError as exc:
+                messagebox.showerror("Seek problem", str(exc), parent=self)
 
     def _audio_update_tick(self):
         if not self.audio_is_active or not self.audio_backend:
@@ -1735,6 +1743,8 @@ class Reader(tk.Tk):
         except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
             messagebox.showerror("Could not open EPUB", str(exc))
             return
+        if self.audio_is_active:
+            self.show_reader_screen()
         if restore_from_path:
             restore_book_state_for_moved_file(self.state, restore_from_path, path)
         self.book = book
