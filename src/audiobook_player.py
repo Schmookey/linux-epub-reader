@@ -74,6 +74,8 @@ class MPVBackend:
         self._request_id = 0
         self._ipc_socket = None
         self._ipc_buffer = bytearray()
+        self._stderr_log_path = None
+        self._stderr_log = None
         self.current_path = None
 
     @property
@@ -90,6 +92,8 @@ class MPVBackend:
         self._runtime_dir = tempfile.mkdtemp(prefix="ler-audio-")
         os.chmod(self._runtime_dir, 0o700)
         self._socket_path = os.path.join(self._runtime_dir, "mpv.sock")
+        self._stderr_log_path = os.path.join(self._runtime_dir, "mpv-stderr.log")
+        self._stderr_log = open(self._stderr_log_path, "wb")
         command = [
             self.executable,
             "--no-config",
@@ -109,13 +113,21 @@ class MPVBackend:
         try:
             self.process = subprocess.Popen(
                 command, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=self._stderr_log,
                 close_fds=True,
             )
             deadline = time.monotonic() + self.startup_timeout
             while time.monotonic() < deadline:
-                if self.process.poll() is not None:
-                    raise AudiobookError("The audiobook playback engine stopped unexpectedly.")
+                exit_code = self.process.poll()
+                if exit_code is not None:
+                    detail = self._read_startup_diagnostics()
+                    message = (
+                        "The audiobook playback engine stopped unexpectedly "
+                        f"(exit code {exit_code})."
+                    )
+                    if detail:
+                        message += "\n" + detail
+                    raise AudiobookError(message)
                 if os.path.exists(self._socket_path):
                     try:
                         self._connect_ipc()
@@ -127,6 +139,22 @@ class MPVBackend:
         except Exception:
             self.close()
             raise
+
+    def _read_startup_diagnostics(self):
+        """Read a bounded amount of mpv stderr before the private log is removed."""
+        if self._stderr_log is not None:
+            try:
+                self._stderr_log.flush()
+            except OSError:
+                pass
+        if not self._stderr_log_path:
+            return ""
+        try:
+            with open(self._stderr_log_path, "rb") as log_file:
+                data = log_file.read()[-3000:]
+        except OSError:
+            return ""
+        return data.decode("utf-8", errors="replace").strip()
 
     def _connect_ipc(self):
         """Connect once and retain the private mpv IPC stream for this session."""
@@ -281,7 +309,14 @@ class MPVBackend:
                 except (OSError, subprocess.TimeoutExpired):
                     pass
         self.current_path = None
+        stderr_log, self._stderr_log = self._stderr_log, None
+        if stderr_log is not None:
+            try:
+                stderr_log.close()
+            except OSError:
+                pass
         runtime_dir, self._runtime_dir = self._runtime_dir, None
         self._socket_path = None
+        self._stderr_log_path = None
         if runtime_dir:
             shutil.rmtree(runtime_dir, ignore_errors=True)
