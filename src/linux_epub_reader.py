@@ -279,6 +279,21 @@ def remember_last_opened_book(state, path, title):
     state["last_opened_title"] = str(title or os.path.basename(path))
 
 
+def last_opened_item_info(state):
+    """Return a validated last-opened EPUB or audiobook record, if present."""
+    if not isinstance(state, dict):
+        return None
+    item = state.get("last_opened_item")
+    if not isinstance(item, dict) or item.get("type") not in ("epub", "audiobook"):
+        return None
+    path = item.get("path")
+    if not isinstance(path, (str, os.PathLike)) or not os.fspath(path).strip():
+        return None
+    path = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    title = str(item.get("title") or os.path.basename(path))
+    return {"type": item["type"], "path": path, "title": title}
+
+
 def restore_book_state_for_moved_file(state, old_path, new_path):
     """Copy saved position/bookmarks to a user-selected replacement path.
 
@@ -1311,6 +1326,10 @@ class Reader(tk.Tk):
         if not isinstance(record, dict):
             record = {}
         self.state["last_opened_item"] = {"type": "audiobook", "path": path, "title": self.audio_title}
+        self.resume_button.configure(
+            text="Resume last audiobook", command=self.resume_last_audiobook,
+            state=tk.NORMAL,
+        )
         try:
             self._save_state()
         except OSError:
@@ -1427,7 +1446,14 @@ class Reader(tk.Tk):
             record = self.state.setdefault("audiobooks", {}).setdefault(os.path.abspath(self.audio_path), {})
             record.update({"path": self.audio_path, "title": self.audio_title,
                            "position": position, "duration": duration, "chapter": chapter})
-            self.state["last_opened_item"] = {"type": "audiobook", "path": self.audio_path, "title": self.audio_title}
+            current_item = last_opened_item_info(self.state)
+            if self.audio_is_active or (
+                current_item and current_item["type"] == "audiobook"
+                and current_item["path"] == os.path.abspath(self.audio_path)
+            ):
+                self.state["last_opened_item"] = {
+                    "type": "audiobook", "path": self.audio_path, "title": self.audio_title
+                }
             self._save_state()
         except (AudiobookError, OSError, TypeError, ValueError):
             pass
@@ -1462,10 +1488,8 @@ class Reader(tk.Tk):
         self.audio_screen.pack_forget()
         if self.book:
             self._restore_reader_content_layout()
-        elif self.last_book_preview:
-            self._show_welcome_panel()
         else:
-            self._show_welcome_panel()
+            self._refresh_resume_ui()
 
     def open_dialog(self):
         path = filedialog.askopenfilename(
@@ -1486,26 +1510,85 @@ class Reader(tk.Tk):
         messagebox.showinfo(title, message)
 
     def _refresh_resume_ui(self):
-        """Keep the resume action and illustrated welcome panel aligned with saved state."""
-        path, title, inferred = last_opened_book_info(self.state)
-        available = bool(path and os.path.isfile(path))
-        if path:
-            label = "Resume last book" if available else "Locate last book…"
-            self.resume_button.configure(text=label, state=tk.NORMAL)
+        """Keep the resume action aligned with the most recently opened item."""
+        item = last_opened_item_info(self.state)
+        if item and item["type"] == "audiobook":
+            path, title = item["path"], item["title"]
+            available = os.path.isfile(path)
+            self.resume_button.configure(
+                text="Resume last audiobook" if available else "Locate last audiobook…",
+                command=self.resume_last_audiobook,
+                state=tk.NORMAL,
+            )
+            if self.book is None:
+                self.last_book_preview = None
+                self.last_book_preview_path = ""
+                self.last_book_preview_error = ""
+                self._show_audiobook_welcome_panel(path, title, available)
+            return
+
+        if item and item["type"] == "epub":
+            path, title, inferred = item["path"], item["title"], False
         else:
-            self.resume_button.configure(text="Resume last book", state=tk.DISABLED)
+            path, title, inferred = last_opened_book_info(self.state)
+        available = bool(path and os.path.isfile(path))
+        self.resume_button.configure(
+            text=("Resume last book" if available else "Locate last book…") if path else "Resume last book",
+            command=self.resume_last_book,
+            state=tk.NORMAL if path else tk.DISABLED,
+        )
         if self.book is None:
             self.last_book_preview = None
             self.last_book_preview_path = path
             self.last_book_preview_error = ""
             if available:
                 try:
-                    # Re-read the local EPUB to show current metadata and cover art.
-                    # The preview is reused if the reader chooses Resume.
                     self.last_book_preview = EPUBBook(path)
                 except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
                     self.last_book_preview_error = str(exc)
             self._show_welcome_panel(path, title, inferred, self.last_book_preview)
+
+    def _show_audiobook_welcome_panel(self, path, title, available):
+        """Show a simple welcome-back card for the most recently used audiobook."""
+        self.heading.pack_forget()
+        self.text_frame.pack_forget()
+        self.audio_screen.pack_forget()
+        self.welcome_view.pack(fill=tk.BOTH, expand=True)
+        for child in self.welcome_view.winfo_children():
+            child.destroy()
+        card = tk.Frame(
+            self.welcome_view, bg=PANEL_BG, highlightthickness=1,
+            highlightbackground=BORDER, bd=0,
+        )
+        card.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        tk.Label(
+            card, text="WELCOME BACK", bg=PANEL_BG, fg=MINT_GREEN,
+            font=("Sans", 9, "bold"),
+        ).pack(anchor="w", padx=24, pady=(24, 6))
+        tk.Label(
+            card, text=title, bg=PANEL_BG, fg=DEFAULT_FG,
+            font=(FONT_NAME, 19, "bold"), anchor="w", justify=tk.LEFT,
+            wraplength=760,
+        ).pack(fill=tk.X, padx=24)
+        message = (
+            "Your last audiobook is ready. It will open paused at your saved listening position."
+            if available else
+            "The audiobook is no longer at its saved location. Locate the same M4B file to restore your listening position."
+        )
+        tk.Label(
+            card, text=message, bg=PANEL_BG, fg=MUTED_TEXT,
+            font=(FONT_NAME, 10), anchor="w", justify=tk.LEFT,
+            wraplength=760,
+        ).pack(fill=tk.X, padx=24, pady=(10, 8))
+        tk.Label(
+            card, text=path, bg=PANEL_BG, fg=MUTED_TEXT,
+            font=("Sans", 8), anchor="w", wraplength=760,
+        ).pack(fill=tk.X, padx=24, pady=(0, 18))
+        ttk.Button(
+            card,
+            text="Resume audiobook" if available else "Locate audiobook…",
+            command=self.resume_last_audiobook,
+        ).pack(anchor="w", padx=24, pady=(0, 24))
 
     def _create_cover_photo(self, cover_bytes, max_size):
         """Decode a book cover for Tk, preferring Pillow for JPEG and other formats."""
@@ -1732,6 +1815,40 @@ class Reader(tk.Tk):
         )
         if selected:
             self.open_book(selected, restore_from_path=path)
+
+    def resume_last_audiobook(self):
+        """Resume the saved audiobook or locate it again without losing history."""
+        item = last_opened_item_info(self.state)
+        if not item or item["type"] != "audiobook":
+            self.open_audiobook_dialog()
+            return
+        path = item["path"]
+        if os.path.isfile(path):
+            self.open_audiobook(path, resume=True)
+            return
+        messagebox.showinfo(
+            "Last audiobook not found",
+            f"Linux EPUB Reader cannot find “{item['title']}” at its saved location. "
+            "Select the same DRM-free M4B file to restore your listening position.",
+            parent=self,
+        )
+        initial_dir = os.path.dirname(path)
+        if not os.path.isdir(initial_dir):
+            initial_dir = os.path.expanduser("~")
+        selected = filedialog.askopenfilename(
+            parent=self, title="Locate your last audiobook",
+            initialdir=initial_dir,
+            filetypes=[("M4B audiobooks", "*.m4b"), ("All files", "*.*")],
+        )
+        if selected:
+            selected = os.path.abspath(selected)
+            records = self.state.setdefault("audiobooks", {})
+            previous = records.get(path)
+            if isinstance(previous, dict) and selected not in records:
+                restored = dict(previous)
+                restored["path"] = selected
+                records[selected] = restored
+            self.open_audiobook(selected, resume=True)
 
     def _restore_reader_content_layout(self):
         """Restore reader widgets in a safe order, leaving the welcome panel alone."""
