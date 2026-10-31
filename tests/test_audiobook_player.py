@@ -69,14 +69,14 @@ class IPCProtocolTests(unittest.TestCase):
                         request = json.loads(stream.readline().decode("utf-8"))
                         received.append(request)
                         connection.sendall(
-                            (json.dumps({"event": "property-change", "name": "pause"}) + "\\n").encode()
+                            (json.dumps({"event": "property-change", "name": "pause"}) + "\n").encode()
                         )
                         connection.sendall(
                             (json.dumps({
                                 "request_id": request["request_id"],
                                 "error": "success",
                                 "data": request["request_id"],
-                            }) + "\\n").encode()
+                            }) + "\n").encode()
                         )
                 server.close()
 
