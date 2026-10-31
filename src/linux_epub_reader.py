@@ -1511,6 +1511,8 @@ class Reader(tk.Tk):
                 text="Resume last book", command=self.resume_last_book,
                 state=tk.NORMAL,
             )
+            self.book_label.configure(text=self.book.title)
+            self.title(f"{self.book.title} — {APP_NAME} v{APP_VERSION}")
             try:
                 self._save_state()
             except OSError:
