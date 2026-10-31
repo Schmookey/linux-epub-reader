@@ -99,7 +99,7 @@ modules:
   - name: libplacebo
     buildsystem: meson
     post-install:
-      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/libplacebo/LICENSE
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/LICENSE ${FLATPAK_DEST}/share/licenses/libplacebo/LICENSE
     config-opts:
       - -Dvulkan=enabled
       - -Dshaderc=disabled
