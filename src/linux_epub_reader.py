@@ -305,6 +305,17 @@ def audiobook_records(state):
     return records
 
 
+def audiobook_record(state, path):
+    """Return one valid per-file progress record without disturbing EPUB state."""
+    key = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    records = audiobook_records(state)
+    record = records.get(key)
+    if not isinstance(record, dict):
+        record = {}
+        records[key] = record
+    return record
+
+
 def restore_book_state_for_moved_file(state, old_path, new_path):
     """Copy saved position/bookmarks to a user-selected replacement path.
 
@@ -1339,11 +1350,7 @@ class Reader(tk.Tk):
         self.audio_path = path
         self.audio_title = os.path.splitext(os.path.basename(path))[0]
         self.audio_is_active = True
-        records = audiobook_records(self.state)
-        key = os.path.abspath(path)
-        record = records.get(key, {})
-        if not isinstance(record, dict):
-            record = {}
+        record = audiobook_record(self.state, path)
         self.state["last_opened_item"] = {"type": "audiobook", "path": path, "title": self.audio_title}
         self.resume_button.configure(
             text="Resume last audiobook", command=self.resume_last_audiobook,
@@ -1462,7 +1469,7 @@ class Reader(tk.Tk):
             position = max(0.0, float(status.get("time_pos") or 0))
             duration = max(0.0, float(status.get("duration") or 0))
             chapter = max(0, int(status.get("chapter") or 0))
-            record = audiobook_records(self.state).setdefault(os.path.abspath(self.audio_path), {})
+            record = audiobook_record(self.state, self.audio_path)
             record.update({"path": self.audio_path, "title": self.audio_title,
                            "position": position, "duration": duration, "chapter": chapter})
             current_item = last_opened_item_info(self.state)
@@ -1482,9 +1489,7 @@ class Reader(tk.Tk):
             try:
                 self.audio_backend.seek(0)
                 self.audio_backend.pause()
-                record = audiobook_records(self.state).setdefault(
-                    os.path.abspath(self.audio_path), {}
-                )
+                record = audiobook_record(self.state, self.audio_path)
                 record.update({
                     "path": self.audio_path, "title": self.audio_title,
                     "position": 0.0, "chapter": 0,
