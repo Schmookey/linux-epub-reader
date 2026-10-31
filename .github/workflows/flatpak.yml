@@ -86,7 +86,7 @@ jobs:
 
       - name: Run project tests
         run: |
-          python -m py_compile src/linux_epub_reader.py tests/test_reader.py
+          python -m py_compile src/linux_epub_reader.py src/audiobook_player.py tests/test_reader.py tests/test_audiobook_player.py
           python -m unittest discover -s tests -v
 
       - name: Build Flatpak
