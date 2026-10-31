@@ -80,6 +80,7 @@ modules:
     build-commands:
       - install -Dm755 packaging/flatpak/linux-epub-reader-launcher ${FLATPAK_DEST}/bin/linux-epub-reader
       - install -Dm644 src/linux_epub_reader.py ${FLATPAK_DEST}/lib/linux-epub-reader/linux_epub_reader.py
+      - install -Dm644 src/audiobook_player.py ${FLATPAK_DEST}/lib/linux-epub-reader/audiobook_player.py
       - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.desktop ${FLATPAK_DEST}/share/applications/io.github.schmookey.LinuxEpubReader.desktop
       - install -Dm644 share/icons/hicolor/scalable/apps/linux-epub-reader.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.schmookey.LinuxEpubReader.svg
       - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.schmookey.LinuxEpubReader.metainfo.xml
