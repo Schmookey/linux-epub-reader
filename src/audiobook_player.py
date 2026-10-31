@@ -76,6 +76,7 @@ class MPVBackend:
         self._ipc_buffer = bytearray()
         self._stderr_log_path = None
         self._stderr_log = None
+        self._mpv_log_path = None
         self.current_path = None
 
     @property
@@ -93,6 +94,7 @@ class MPVBackend:
         os.chmod(self._runtime_dir, 0o700)
         self._socket_path = os.path.join(self._runtime_dir, "mpv.sock")
         self._stderr_log_path = os.path.join(self._runtime_dir, "mpv-stderr.log")
+        self._mpv_log_path = os.path.join(self._runtime_dir, "mpv-debug.log")
         self._stderr_log = open(self._stderr_log_path, "wb")
         command = [
             self.executable,
@@ -105,6 +107,8 @@ class MPVBackend:
             "--audio-display=no",
             "--demuxer-lavf-o=protocol_whitelist=file",
             "--terminal=no",
+            "--msg-level=all=debug",
+            f"--log-file={self._mpv_log_path}",
             "--pause=yes",
             f"--input-ipc-server={self._socket_path}",
         ]
@@ -149,12 +153,18 @@ class MPVBackend:
                 pass
         if not self._stderr_log_path:
             return ""
-        try:
-            with open(self._stderr_log_path, "rb") as log_file:
-                data = log_file.read()[-3000:]
-        except OSError:
-            return ""
-        return data.decode("utf-8", errors="replace").strip()
+        chunks = []
+        for path in (self._mpv_log_path, self._stderr_log_path):
+            if not path:
+                continue
+            try:
+                with open(path, "rb") as log_file:
+                    data = log_file.read()[-5000:]
+            except OSError:
+                continue
+            if data:
+                chunks.append(data.decode("utf-8", errors="replace").strip())
+        return "\n".join(chunk for chunk in chunks if chunk)
 
     def _connect_ipc(self):
         """Connect once and retain the private mpv IPC stream for this session."""
@@ -318,5 +328,6 @@ class MPVBackend:
         runtime_dir, self._runtime_dir = self._runtime_dir, None
         self._socket_path = None
         self._stderr_log_path = None
+        self._mpv_log_path = None
         if runtime_dir:
             shutil.rmtree(runtime_dir, ignore_errors=True)
