@@ -147,13 +147,13 @@ class MPVBackend:
         request_id = self._request_id
         message = dict(payload)
         message["request_id"] = request_id
-        encoded = (json.dumps(message, ensure_ascii=False) + "\\n").encode("utf-8")
+        encoded = (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
         try:
             self._connect_ipc()
             self._ipc_socket.sendall(encoded)
             while True:
-                while b"\\n" in self._ipc_buffer:
-                    line, _, remainder = self._ipc_buffer.partition(b"\\n")
+                while b"\n" in self._ipc_buffer:
+                    line, _, remainder = self._ipc_buffer.partition(b"\n")
                     self._ipc_buffer = bytearray(remainder)
                     try:
                         response = json.loads(line.decode("utf-8"))
