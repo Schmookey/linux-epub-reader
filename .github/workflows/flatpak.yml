@@ -57,7 +57,7 @@ jobs:
       - name: Install Flatpak build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 ffmpeg
+          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 ffmpeg pulseaudio pulseaudio-utils
 
       - name: Report and verify the build environment
         run: |
@@ -110,9 +110,12 @@ jobs:
           flatpak run --user --command=python3.15 "$APP_ID" -c 'from PIL import Image; import io; image = Image.new("RGB", (4, 6), "green"); stream = io.BytesIO(); image.save(stream, format="JPEG"); stream.seek(0); decoded = Image.open(stream); decoded.load(); assert decoded.size == (4, 6); print("Pillow JPEG cover decoding passed")'
           flatpak run --user --command=mpv "$APP_ID" --version
           mkdir -p "$HOME/.local/share/linux-epub-reader"
+          pulseaudio --start --exit-idle-time=-1 --load=module-null-sink --log-target=stderr
+          pactl info
           ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
-          flatpak run --user --command=python3.15 "$APP_ID" -c 'import os, sys; sys.path.insert(0, "/app/lib/linux-epub-reader"); from audiobook_player import MPVBackend; path=os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b"); player=MPVBackend(audio_output="null", startup_timeout=8); status=player.load(path); assert float(status["duration"]) > 5; assert status["paused"]; player.seek(2); assert player.play_pause(); player.pause(); assert player.status()["paused"]; player.close(); print("Flatpak M4B playback, pause, seek and IPC passed")'
+          flatpak run --user --command=python3.15 "$APP_ID" -c 'import os, sys; sys.path.insert(0, "/app/lib/linux-epub-reader"); from audiobook_player import MPVBackend; path=os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b"); player=MPVBackend(audio_output="pulse", startup_timeout=8); status=player.load(path); assert float(status["duration"]) > 5; assert status["paused"]; player.seek(2); assert player.play_pause(); player.pause(); assert player.status()["paused"]; player.close(); print("Flatpak M4B playback through PulseAudio socket, pause, seek and IPC passed")'
           rm -f "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
+          pulseaudio --kill || true
 
       - name: Save bundle as a workflow artifact
         uses: actions/upload-artifact@v7
