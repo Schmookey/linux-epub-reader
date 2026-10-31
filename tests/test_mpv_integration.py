@@ -1,0 +1,53 @@
+"""Optional real mpv integration test using a generated local AAC/M4B fixture."""
+import os
+import shutil
+import subprocess
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from audiobook_player import MPVBackend
+
+
+@unittest.skipUnless(shutil.which("mpv") and shutil.which("ffmpeg"),
+                     "mpv and ffmpeg are needed for the real playback integration test")
+class MPVIntegrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory(prefix="ler-m4b-test-")
+        cls.media_path = str(Path(cls.directory.name) / "integration-test.m4b")
+        subprocess.run([
+            shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+            "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
+            cls.media_path,
+        ], check=True, timeout=30)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.directory.cleanup()
+
+    def setUp(self):
+        self.backend = MPVBackend(audio_output="null", startup_timeout=8)
+
+    def tearDown(self):
+        self.backend.close()
+
+    def test_real_m4b_loads_paused_and_supports_seek_play_pause(self):
+        result = self.backend.load(self.media_path)
+        self.assertGreater(float(result.get("duration") or 0), 5.0)
+        self.assertTrue(result.get("paused"))
+        self.backend.seek(2.0)
+        self.assertTrue(self.backend.play_pause())
+        time.sleep(0.25)
+        self.assertFalse(self.backend.status().get("paused"))
+        self.backend.pause()
+        self.assertTrue(self.backend.status().get("paused"))
+        self.assertGreaterEqual(float(self.backend.status().get("time_pos") or 0), 1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()
