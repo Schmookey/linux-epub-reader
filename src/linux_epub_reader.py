@@ -1390,6 +1390,9 @@ class Reader(tk.Tk):
             position = float(status.get("time_pos") or 0)
             duration = float(status.get("duration") or 0)
             paused = bool(status.get("paused", True))
+            chapters = status.get("chapters", [])
+            if chapters and chapters != self.audio_chapters:
+                self._refresh_audio_chapters(chapters)
             if duration > 0:
                 self.audio_seek.configure(to=duration)
                 self.audio_position_var.set(position)
