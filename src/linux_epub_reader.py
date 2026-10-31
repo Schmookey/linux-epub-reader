@@ -1428,14 +1428,15 @@ class Reader(tk.Tk):
 
     def _audio_stop(self):
         if self.audio_backend and self.audio_path:
-            self._save_audio_position()
             try:
-                self.audio_backend.stop()
+                self.audio_backend.seek(0)
+                self.audio_backend.pause()
+                self._save_audio_position()
             except AudiobookError:
                 pass
         self.audio_play_button.configure(text="Play")
         self.audio_position_var.set(0)
-        self.audio_time_label.configure(text="Stopped")
+        self.audio_time_label.configure(text="Stopped · ready to play from the beginning")
 
     def show_reader_screen(self):
         if self.audio_is_active:
