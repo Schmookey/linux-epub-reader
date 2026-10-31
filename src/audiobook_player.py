@@ -115,10 +115,16 @@ class MPVBackend:
                 if self.process.poll() is not None:
                     raise AudiobookError("The audiobook playback engine stopped unexpectedly.")
                 if os.path.exists(self._socket_path):
+                    # The socket path is created only after mpv has bound its
+                    # IPC listener. Probe the connection without issuing a
+                    # property request; some mpv builds report idle properties
+                    # differently before the first file is loaded.
                     try:
-                        self._request({"command": ["get_property", "idle-active"]})
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                            probe.settimeout(0.2)
+                            probe.connect(self._socket_path)
                         return
-                    except (OSError, AudiobookError, socket.timeout):
+                    except (OSError, socket.timeout):
                         pass
                 time.sleep(0.05)
             raise AudiobookError("The audiobook playback engine did not become ready.")
