@@ -166,7 +166,26 @@ class MPVBackend:
         self.command("loadfile", local_path, "replace")
         self.command("set_property", "pause", True)
         self.current_path = local_path
-        return self.status()
+        # mpv acknowledges loadfile before FFmpeg has finished probing the
+        # container. Wait briefly for duration metadata so the UI can restore
+        # a saved position and populate chapter controls reliably.
+        deadline = time.monotonic() + self.startup_timeout
+        latest = self.status()
+        while time.monotonic() < deadline:
+            duration = latest.get("duration")
+            try:
+                if duration is not None and float(duration) > 0:
+                    return latest
+            except (TypeError, ValueError, OverflowError):
+                pass
+            if not self.process or self.process.poll() is not None:
+                raise AudiobookError("The playback engine stopped while opening the audiobook.")
+            time.sleep(0.05)
+            latest = self.status()
+        raise AudiobookError(
+            "The M4B file could not be read or its audio track could not be loaded. "
+            "It may be damaged, unsupported or DRM-protected."
+        )
 
     def play_pause(self):
         paused = bool(self._request({"command": ["get_property", "pause"]}))
