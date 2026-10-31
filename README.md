@@ -13,6 +13,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
 - Full-screen reading (F11; Esc to exit), with an optional floating Mint-green F11 exit hint and a saved 'Don't show this again' preference. The hint can be restored from the View menu.
 - Book metadata, search, bookmarks and saved reading positions.
+- Local M4B audiobooks in the same application window, with play/pause, stop, seeking, chapter selection, elapsed/remaining time and separately saved listening positions. Audiobooks open paused; playback never starts automatically.
 - An illustrated welcome-back screen with the last book's front cover, available publication details, saved chapter and progress, and a prominent Mint-green Resume button.
 - Detection of Adobe ADEPT and Readium LCP protected files without attempting to remove protection.
 
@@ -22,6 +23,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Adobe DRM is not implemented inside this application. It detects protected files, displays an explanatory notice and stops. It never launches Adobe Digital Editions, Wine, Thorium Reader, a PDF reader or any other external application for protected or unsupported files.
 - ACSM files are download/fulfilment instructions, not book contents. This application does not fulfil them or contact a publisher.
 - Readium LCP-protected files are identified and explained in a notice; no external reader is launched.
+- Audiobook support is for locally stored, DRM-free M4B files. DRM-protected or unsupported audio is not decrypted or bypassed; it produces a local error notice.
 - Chapter page counts are estimates unless a publication provides page markers.
 - Automated tests are included. Please test on a real Linux Mint desktop before relying on the reader for important books.
 
@@ -29,6 +31,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 
 - Linux desktop with Python 3 and Tkinter (python3, python3-tk).
 - Optional: fonts-atkinson-hyperlegible for the preferred typeface. The reader falls back to available fonts if it is absent.
+- Optional for running from source: mpv for local M4B audiobook playback. The Debian package declares mpv as a dependency.
 
 The app uses Python and Tkinter. Pillow (python3-pil on Debian/Ubuntu) is used for JPEG and other cover-image formats; Tk's built-in decoder remains a fallback for supported image types.
 
@@ -50,9 +53,9 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
 The Debian package uses gzip compression for broader compatibility with older package managers.
 
-The output is dist/linux-epub-reader_0.13.9-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is dist/linux-epub-reader_0.13.10-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.9-1_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.10-1_all.deb
 
 ## Privacy and project boundary
 
