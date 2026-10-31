@@ -1,6 +1,6 @@
 app-id: io.github.schmookey.LinuxEpubReader
 runtime: org.freedesktop.Platform
-runtime-version: '25.08'
+runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 command: linux-epub-reader
 
@@ -11,8 +11,8 @@ finish-args:
   - --filesystem=home:ro
   # Keep reading-state writes limited to the application's existing state directory.
   - --filesystem=~/.local/share/linux-epub-reader:create
-  - --env=TCL_LIBRARY=/app/lib/tcl8.6
-  - --env=TK_LIBRARY=/app/lib/tk8.6
+  - --env=TCL_LIBRARY=/app/lib/tcl9.1
+  - --env=TK_LIBRARY=/app/lib/tk9.1
 
 modules:
   - name: python-with-tk
@@ -20,17 +20,18 @@ modules:
     build-commands:
       - |
         export TCLTK_CFLAGS="-I${FLATPAK_DEST}/include"
-        export TCLTK_LIBS="-L${FLATPAK_DEST}/lib -ltk8.6 -ltcl8.6"
+        export TCLTK_LIBS="-L${FLATPAK_DEST}/lib -ltcl9tk9.1 -ltcl9.1"
         export LDFLAGS="-Wl,-rpath,${FLATPAK_DEST}/lib"
         ./configure --prefix=${FLATPAK_DEST} --enable-shared --with-ensurepip=no --disable-test-modules
       - make -j2
       - make install
       - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/python/LICENSE
-      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib TCL_LIBRARY=${FLATPAK_DEST}/lib/tcl8.6 TK_LIBRARY=${FLATPAK_DEST}/lib/tk8.6 ${FLATPAK_DEST}/bin/python3.13 -c 'import tkinter, _tkinter; print("Bundled Python/Tkinter import passed")'
+      - test -f ${FLATPAK_DEST}/lib/tcl9.1/init.tcl && test -f ${FLATPAK_DEST}/lib/tk9.1/tk.tcl
+      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib TCL_LIBRARY=${FLATPAK_DEST}/lib/tcl9.1 TK_LIBRARY=${FLATPAK_DEST}/lib/tk9.1 ${FLATPAK_DEST}/bin/python3.15 -c 'import tkinter; interpreter = tkinter.Tcl(); print("Bundled Tcl " + interpreter.eval("info patchlevel") + " initialised; library path = " + interpreter.eval("set tcl_library"))'
     sources:
       - type: archive
-        url: https://www.python.org/ftp/python/3.13.18/Python-3.13.18.tar.xz
-        sha256: abb0102e6d4ae027509bcb82327d9dd85515b44a3ba8ad538cfc5e9847029f68
+        url: https://www.python.org/ftp/python/3.15.2/Python-3.15.2.tar.xz
+        sha256: 8b5536d280142ecf6cdfe15d12a21ba1c65e300bbf7b28a8d0cdb849575797de
     modules:
       - name: tcl
         buildsystem: autotools
@@ -38,26 +39,41 @@ modules:
         config-opts:
           - --enable-threads
           - --enable-shared
+          - --disable-zipfs
         post-install:
-          - chmod 755 ${FLATPAK_DEST}/lib/libtcl8.6.so
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9.1.so
           - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tcl/LICENSE
         sources:
-          - type: archive
-            url: https://prdownloads.sourceforge.net/tcl/tcl8.6.12-src.tar.gz
-            sha256: 26c995dd0f167e48b11961d891ee555f680c175f7173ff8cb829f4ebcde4c1a6
+          - type: git
+            url: https://github.com/tcltk/tcl.git
+            tag: core-9-1-0
+            commit: 0c6bad08d91fa2ad51f05a50a41f8c1ea82ce985
       - name: tk
         buildsystem: autotools
         subdir: unix
         config-opts:
           - --enable-threads
           - --enable-shared
+          - --disable-zipfs
         post-install:
-          - chmod 755 ${FLATPAK_DEST}/lib/libtk8.6.so
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9tk9.1.so
           - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tk/LICENSE
         sources:
+          - type: git
+            url: https://github.com/tcltk/tk.git
+            tag: core-9-1-0
+            commit: 3f45110c0a568b70f2ebd5412f215e87d199bc7d
+      - name: pillow
+        buildsystem: simple
+        build-commands:
+          - install -d ${FLATPAK_DEST}/lib/python3.15/site-packages
+          - cp -a PIL pillow.libs pillow-13.0.0.dist-info ${FLATPAK_DEST}/lib/python3.15/site-packages/
+        sources:
           - type: archive
-            url: https://prdownloads.sourceforge.net/tcl/tk8.6.12-src.tar.gz
-            sha256: 12395c1f3fcb6bed2938689f797ea3cdf41ed5cb6c4766eec8ac949560310630
+            url: https://files.pythonhosted.org/packages/85/11/e46fa0bcc0fc117f1eacc206b3d51f04d583fab328b4b740672d0438d83f/pillow-13.0.0-cp315-cp315-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+            sha256: 8f36aa77f74b14a2103622b196402c71330e4e7cf4122ee45c854e9a01e0eecf
+            archive-type: zip
+            strip-components: 0
 
   - name: linux-epub-reader
     buildsystem: simple

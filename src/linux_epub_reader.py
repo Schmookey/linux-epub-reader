@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
-"""Linux EPUB Reader v0.13.7 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.9 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -8,6 +8,7 @@ media are not rendered. Chapter page counts are estimates unless publisher page
 markers are supplied.
 """
 import os, re, sys, json, zipfile, posixpath, hashlib, html, io, base64, shutil
+from urllib.parse import unquote
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
@@ -15,7 +16,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.7"
+APP_VERSION = "0.13.9"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -165,6 +166,133 @@ def migrate_legacy_state():
             pass
 
 
+def book_state_key(path):
+    """Return the stable per-book key used for locally saved reading state."""
+    normalised = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    return hashlib.sha256(normalised.encode()).hexdigest()[:24]
+
+
+def last_opened_book_info(state):
+    """Return (path, title, inferred) for the last book, including v0.13.7 state.
+
+    Older state files did not record a global last-opened path. For those files,
+    use the last inserted book record as a best-effort starting suggestion. The
+    user still chooses whether to resume it.
+    """
+    if not isinstance(state, dict):
+        return "", "", False
+    path = state.get("last_opened_book")
+    title = state.get("last_opened_title", "")
+    inferred = False
+    if not path:
+        books = state.get("books", {})
+        if isinstance(books, dict):
+            for record in reversed(list(books.values())):
+                if isinstance(record, dict) and record.get("path"):
+                    path = record["path"]
+                    inferred = True
+                    break
+    if not isinstance(path, (str, os.PathLike)) or not os.fspath(path).strip():
+        return "", "", False
+    path = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    if not title:
+        title = os.path.basename(path)
+    return path, str(title), inferred
+
+
+def remember_last_opened_book(state, path, title):
+    """Record the last successfully opened book without storing its contents."""
+    state["last_opened_book"] = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    state["last_opened_title"] = str(title or os.path.basename(path))
+
+
+def restore_book_state_for_moved_file(state, old_path, new_path):
+    """Copy saved position/bookmarks to a user-selected replacement path.
+
+    Existing state for the new path is kept intact. The old record is retained
+    too, so choosing a different file never destroys the previous reading data.
+    """
+    old_key = book_state_key(old_path)
+    new_key = book_state_key(new_path)
+    if old_key == new_key:
+        return False
+    books = state.setdefault("books", {})
+    previous = books.get(old_key)
+    if not isinstance(previous, dict) or new_key in books:
+        return False
+    restored = dict(previous)
+    restored["path"] = os.path.abspath(os.path.expanduser(os.fspath(new_path)))
+    restored["bookmarks"] = [dict(item) if isinstance(item, dict) else item
+                             for item in previous.get("bookmarks", [])]
+    books[new_key] = restored
+    return True
+
+
+def saved_book_summary(state, path, book):
+    """Summarise the last saved chapter position without changing reading state."""
+    books = state.get("books", {}) if isinstance(state, dict) else {}
+    record = books.get(book_state_key(path), {}) if isinstance(books, dict) else {}
+    if not isinstance(record, dict):
+        record = {}
+    chapters = getattr(book, "chapters", []) or []
+    if not chapters:
+        return {
+            "chapter_index": 0, "chapter_number": 0, "chapter_count": 0,
+            "chapter_title": "Not available", "chapter_percent": 0,
+            "overall_percent": 0,
+        }
+    try:
+        index = int(record.get("chapter", 0))
+    except (TypeError, ValueError):
+        index = 0
+    index = max(0, min(len(chapters) - 1, index))
+    try:
+        fraction = float(record.get("fraction", 0.0))
+    except (TypeError, ValueError):
+        fraction = 0.0
+    fraction = max(0.0, min(1.0, fraction))
+    word_counts = [max(0, int(ch.get("words", len(ch.get("text", "").split())))) for ch in chapters]
+    total_words = max(1, sum(word_counts))
+    words_before = sum(word_counts[:index])
+    words_here = word_counts[index]
+    overall = int(((words_before + words_here * fraction) / total_words) * 100 + 0.5)
+    return {
+        "chapter_index": index,
+        "chapter_number": index + 1,
+        "chapter_count": len(chapters),
+        "chapter_title": chapters[index].get("title") or f"Chapter {index + 1}",
+        "chapter_percent": int(fraction * 100 + 0.5),
+        "overall_percent": max(0, min(100, overall)),
+    }
+
+
+def welcome_text_for_last_book(state):
+    """Build the local welcome screen with an optional resume/locate hint."""
+    path, title, inferred = last_opened_book_info(state)
+    if not path:
+        return WELCOME_TEXT
+    if os.path.isfile(path):
+        message = (
+            f"Welcome back!\n\nYour last book was:\n{title}\n\n"
+            "Your saved chapter and reading position are ready. Select "
+            "“Resume last book” in the toolbar to continue, or choose "
+            "“Open book…” to read something else."
+        )
+    else:
+        message = (
+            f"Welcome back!\n\nYour last book was:\n{title}\n\n"
+            "The book is not currently available at its saved location. "
+            "Select “Locate last book…” to find it again. Your saved reading "
+            "position and bookmarks will be restored when you select the same book."
+        )
+    if inferred:
+        message += (
+            "\n\nThis suggestion was recovered from your earlier reading "
+            "history; confirm it is the book you want to resume."
+        )
+    return message
+
+
 def lname(tag):
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
@@ -276,7 +404,8 @@ def extract_markup(raw):
 
 
 def resolve_member(base_dir, href):
-    href = (href or "").split("#", 1)[0]
+    """Resolve an EPUB-relative resource path, including escaped filenames."""
+    href = unquote((href or "").split("#", 1)[0].split("?", 1)[0])
     return posixpath.normpath(posixpath.join(base_dir, href))
 
 
@@ -334,17 +463,38 @@ class EPUBBook:
                 elif tag == "identifier" and not self.identifier: self.identifier = value
                 elif tag == "description" and not self.description: self.description = value
                 elif tag == "subject": self.subjects.append(value)
-            cover_id = None
+            # EPUB 3 uses the cover-image manifest property; EPUB 2 commonly
+            # points to the cover item through a <meta name="cover"> entry.
+            cover_ids = []
             for el in opf.iter():
                 if lname(el.tag) == "item" and "cover-image" in el.get("properties", "").split():
-                    cover_id = el.get("id")
-                if lname(el.tag) == "meta" and el.get("name", "").lower() == "cover":
-                    cover_id = el.get("content")
-            if cover_id and cover_id in manifest:
-                cover_member = resolve_member(opf_dir, manifest[cover_id]["href"])
+                    if el.get("id"):
+                        cover_ids.insert(0, el.get("id"))
+                elif lname(el.tag) == "meta":
+                    if el.get("name", "").lower() == "cover" and el.get("content"):
+                        cover_ids.append(el.get("content"))
+                    elif el.get("property", "").lower() in ("cover", "cover-image") and el.get("content"):
+                        cover_ids.append(el.get("content"))
+            cover_items = [manifest[item_id] for item_id in cover_ids if item_id in manifest]
+            if not cover_items:
+                # Be tolerant of older/less complete EPUBs that omit the formal
+                # cover declaration but use an obvious cover filename or id.
+                cover_items = [
+                    item for item_id, item in manifest.items()
+                    if item["media"].startswith("image/")
+                    and "cover" in (item_id + " " + item["href"]).lower()
+                ]
+            if not cover_items:
+                cover_items = [
+                    item for item in manifest.values()
+                    if item["media"].startswith("image/")
+                ][:1]
+            for item in cover_items:
+                cover_member = resolve_member(opf_dir, item["href"])
                 if cover_member in names:
                     self.cover_name = posixpath.basename(cover_member)
                     self.cover_bytes = zf.read(cover_member)
+                    break
             # Load chapter XHTML in the publication's declared reading order.
             member_to_index = {}
             for item_id in spine:
@@ -481,7 +631,12 @@ class Reader(tk.Tk):
         self._toc_items = {}
         self._setting_toc_selection = False
         self._search_results = []
+        self.last_book_preview = None
+        self.last_book_preview_path = ""
+        self.last_book_preview_error = ""
+        self._welcome_cover_photo = None
         self._build_ui()
+        self._refresh_resume_ui()
         self.bind("<Control-o>", lambda _e: self.open_dialog())
         self.bind("<Control-f>", lambda _e: self.search_dialog())
         self.bind("<Control-b>", lambda _e: self.add_bookmark())
@@ -503,7 +658,7 @@ class Reader(tk.Tk):
         os.replace(tmp, STATE_FILE)
 
     def _book_key(self, path):
-        return hashlib.sha256(os.path.abspath(path).encode()).hexdigest()[:24]
+        return book_state_key(path)
 
     def _book_state(self):
         if not self.current_key: return {}
@@ -565,6 +720,10 @@ class Reader(tk.Tk):
         self.toolbar = ttk.Frame(self, padding=(12, 10), style="Toolbar.TFrame")
         self.toolbar.pack(fill=tk.X)
         ttk.Button(self.toolbar, text="Open book…", command=self.open_dialog).pack(side=tk.LEFT)
+        self.resume_button = ttk.Button(
+            self.toolbar, text="Resume last book", command=self.resume_last_book, state=tk.DISABLED
+        )
+        self.resume_button.pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Book details", command=self.show_details).pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Search book", command=self.search_dialog).pack(side=tk.LEFT, padx=(7, 0))
         ttk.Button(self.toolbar, text="Bookmarks", command=self.show_bookmarks).pack(side=tk.LEFT, padx=(7, 0))
@@ -656,6 +815,7 @@ class Reader(tk.Tk):
         self.text_scroll = ttk.Scrollbar(self.text_frame, orient=tk.VERTICAL, command=self.text.yview)
         self.text.configure(yscrollcommand=self._on_scroll)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.welcome_view = tk.Frame(self.reader_body, bg=APP_BG, bd=0, highlightthickness=0)
         self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
         self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
                                 spacing1=12, spacing3=10)
@@ -691,7 +851,6 @@ class Reader(tk.Tk):
         self.progress_percent.pack(side=tk.RIGHT, padx=(10, 0))
         self.progress = ttk.Progressbar(self.bottom, style="LinuxEPUB.Horizontal.TProgressbar", orient=tk.HORIZONTAL, mode="determinate", maximum=100, length=240)
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(12, 0))
-        self.set_text(WELCOME_TEXT)
 
     def show_about(self):
         """Show the running application version so installed builds are easy to verify."""
@@ -990,19 +1149,280 @@ class Reader(tk.Tk):
         title, message = drm_notice_for(path, drm_type)
         messagebox.showinfo(title, message)
 
-    def open_book(self, path):
+    def _refresh_resume_ui(self):
+        """Keep the resume action and illustrated welcome panel aligned with saved state."""
+        path, title, inferred = last_opened_book_info(self.state)
+        available = bool(path and os.path.isfile(path))
+        if path:
+            label = "Resume last book" if available else "Locate last book…"
+            self.resume_button.configure(text=label, state=tk.NORMAL)
+        else:
+            self.resume_button.configure(text="Resume last book", state=tk.DISABLED)
+        if self.book is None:
+            self.last_book_preview = None
+            self.last_book_preview_path = path
+            self.last_book_preview_error = ""
+            if available:
+                try:
+                    # Re-read the local EPUB to show current metadata and cover art.
+                    # The preview is reused if the reader chooses Resume.
+                    self.last_book_preview = EPUBBook(path)
+                except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
+                    self.last_book_preview_error = str(exc)
+            self._show_welcome_panel(path, title, inferred, self.last_book_preview)
+
+    def _create_cover_photo(self, cover_bytes, max_size):
+        """Decode a book cover for Tk, preferring Pillow for JPEG and other formats."""
+        if not cover_bytes:
+            return None
+        try:
+            from PIL import Image, ImageTk
+            with Image.open(io.BytesIO(cover_bytes)) as image:
+                image.load()
+                image.thumbnail(max_size, Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(image.copy(), master=self)
+        except ImportError:
+            # Tk's built-in decoder handles formats such as PNG and GIF.
+            try:
+                photo = tk.PhotoImage(data=base64.b64encode(cover_bytes), master=self)
+                width, height = photo.width(), photo.height()
+                if width > max_size[0] or height > max_size[1]:
+                    factor = max(1, (width + max_size[0] - 1) // max_size[0],
+                                 (height + max_size[1] - 1) // max_size[1])
+                    photo = photo.subsample(factor, factor)
+                return photo
+            except tk.TclError:
+                return None
+        except Exception:
+            return None
+
+    def _show_welcome_panel(self, path="", title="", inferred=False, book=None):
+        """Show an illustrated, information-rich welcome-back panel in the reading area."""
+        self.heading.pack_forget()
+        self.text_frame.pack_forget()
+        self.welcome_view.pack(fill=tk.BOTH, expand=True)
+        for child in self.welcome_view.winfo_children():
+            child.destroy()
+        self._welcome_cover_photo = None
+
+        card = tk.Frame(
+            self.welcome_view, bg=PANEL_BG, highlightthickness=1,
+            highlightbackground=BORDER, bd=0,
+        )
+        card.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        header = tk.Frame(card, bg=PANEL_BG)
+        header.pack(fill=tk.X, padx=22, pady=(18, 8))
+        has_saved_book = bool(path)
+        eyebrow = "WELCOME BACK" if has_saved_book else "WELCOME"
+        tk.Label(
+            header, text=eyebrow, bg=PANEL_BG, fg=MINT_GREEN,
+            font=("Sans", 9, "bold"), anchor="w",
+        ).pack(anchor="w")
+        if has_saved_book:
+            tk.Label(
+                header, text="Your last book is ready when you are",
+                bg=PANEL_BG, fg=DEFAULT_FG, font=("Sans", 15, "bold"),
+                anchor="w",
+            ).pack(anchor="w", pady=(3, 0))
+        else:
+            tk.Label(
+                header, text="Welcome to Linux EPUB Reader",
+                bg=PANEL_BG, fg=DEFAULT_FG, font=("Sans", 15, "bold"),
+                anchor="w",
+            ).pack(anchor="w", pady=(3, 0))
+
+        content = tk.Frame(card, bg=PANEL_BG)
+        content.pack(fill=tk.BOTH, expand=True, padx=22, pady=(8, 18))
+        cover_column = tk.Frame(content, bg=PANEL_BG, width=190)
+        cover_column.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 22))
+        cover_column.pack_propagate(False)
+        cover_box = tk.Frame(
+            cover_column, bg=APP_BG, highlightthickness=1,
+            highlightbackground=BORDER, width=176, height=260,
+        )
+        cover_box.pack(anchor="n")
+        cover_box.pack_propagate(False)
+
+        info = tk.Frame(content, bg=PANEL_BG)
+        info.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        if book is not None and book.cover_bytes:
+            self._welcome_cover_photo = self._create_cover_photo(book.cover_bytes, (174, 258))
+        if self._welcome_cover_photo is not None:
+            tk.Label(cover_box, image=self._welcome_cover_photo, bg=APP_BG, bd=0).pack(
+                expand=True, padx=2, pady=2
+            )
+        else:
+            cover_label = "Cover artwork\nnot available" if book is not None and book.cover_bytes else "EPUB\nBOOK"
+            tk.Label(
+                cover_box, text=cover_label, bg=APP_BG, fg=MUTED_TEXT,
+                font=("Sans", 15, "bold"), justify=tk.CENTER,
+            ).pack(fill=tk.BOTH, expand=True)
+
+        if book is not None:
+            tk.Label(
+                info, text=book.title, bg=PANEL_BG, fg=DEFAULT_FG,
+                font=(FONT_NAME, 19, "bold"), justify=tk.LEFT, anchor="w",
+                wraplength=460,
+            ).pack(fill=tk.X, anchor="w")
+            tk.Label(
+                info, text=book.author or "Author not supplied",
+                bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 11),
+                justify=tk.LEFT, anchor="w",
+            ).pack(fill=tk.X, anchor="w", pady=(4, 12))
+            metadata = [
+                ("Publisher", book.publisher),
+                ("Publication date", book.date),
+                ("Language", book.language),
+                ("Identifier", book.identifier),
+                ("Subjects", "; ".join(book.subjects)),
+                ("Chapters", str(len(book.chapters))),
+                ("Extracted words", f"{book.word_count:,}"),
+            ]
+            for label, value in metadata:
+                if value:
+                    tk.Label(
+                        info, text=f"{label}: {value}", bg=PANEL_BG,
+                        fg=DEFAULT_FG, font=("Sans", 9), anchor="w",
+                        justify=tk.LEFT, wraplength=470,
+                    ).pack(fill=tk.X, anchor="w", pady=1)
+            if book.description:
+                tk.Label(
+                    info, text="Description", bg=PANEL_BG, fg=DEFAULT_FG,
+                    font=("Sans", 9, "bold"), anchor="w",
+                ).pack(fill=tk.X, anchor="w", pady=(9, 2))
+                description = tk.Text(
+                    info, height=4, wrap=tk.WORD, font=(FONT_NAME, 9),
+                    bg=APP_BG, fg=DEFAULT_FG, insertbackground=DEFAULT_FG,
+                    relief=tk.FLAT, borderwidth=0, highlightthickness=0,
+                    padx=8, pady=6,
+                )
+                description.pack(fill=tk.X, expand=False)
+                description.insert("1.0", book.description)
+                description.configure(state=tk.DISABLED)
+            summary = saved_book_summary(self.state, path, book)
+            tk.Label(
+                info,
+                text=(
+                    f"Saved place: Chapter {summary['chapter_number']} of "
+                    f"{summary['chapter_count']} — {summary['chapter_title']}\n"
+                    f"{summary['chapter_percent']}% through this chapter"
+                    f"  •  about {summary['overall_percent']}% of the book"
+                ),
+                bg=PANEL_BG, fg=MINT_GREEN, font=("Sans", 9, "bold"),
+                anchor="w", justify=tk.LEFT, wraplength=470,
+            ).pack(fill=tk.X, anchor="w", pady=(10, 2))
+        elif path:
+            tk.Label(
+                info, text=title or os.path.basename(path), bg=PANEL_BG,
+                fg=DEFAULT_FG, font=(FONT_NAME, 19, "bold"),
+                justify=tk.LEFT, anchor="w", wraplength=460,
+            ).pack(fill=tk.X, anchor="w")
+            message = (
+                "The saved EPUB is no longer available at its previous location. "
+                "Choose Locate last book to select it again; your saved chapter, "
+                "reading position and bookmarks will be restored."
+            )
+            if self.last_book_preview_error:
+                message += "\n\nThe book details could not be read: " + self.last_book_preview_error
+            tk.Label(
+                info, text=message, bg=PANEL_BG, fg=MUTED_TEXT,
+                font=(FONT_NAME, 10), justify=tk.LEFT, anchor="w",
+                wraplength=470,
+            ).pack(fill=tk.X, anchor="w", pady=(10, 0))
+        else:
+            tk.Label(
+                info, text=WELCOME_TEXT, bg=PANEL_BG, fg=DEFAULT_FG,
+                font=(FONT_NAME, 10), justify=tk.LEFT, anchor="nw",
+                wraplength=470,
+            ).pack(fill=tk.BOTH, expand=True, anchor="nw")
+
+        actions = tk.Frame(card, bg=PANEL_BG)
+        actions.pack(fill=tk.X, padx=22, pady=(0, 18))
+        button_text = "Resume" if has_saved_book and os.path.isfile(path) else (
+            "Locate last book…" if has_saved_book else "Open a book…"
+        )
+        primary = tk.Button(
+            actions, text=button_text,
+            command=self.resume_last_book if has_saved_book else self.open_dialog,
+            bg=MINT_GREEN, fg=APP_BG, activebackground="#9BDC59",
+            activeforeground=APP_BG, relief=tk.FLAT, borderwidth=0,
+            font=("Sans", 11, "bold"), padx=28, pady=10,
+            cursor="hand2",
+        )
+        primary.pack(side=tk.LEFT)
+        ttk.Button(
+            actions, text="Open another book…", command=self.open_dialog,
+        ).pack(side=tk.LEFT, padx=(10, 0))
+        if inferred and has_saved_book:
+            tk.Label(
+                actions, text="Suggested from your earlier reading history",
+                bg=PANEL_BG, fg=MUTED_TEXT, font=("Sans", 8),
+            ).pack(side=tk.LEFT, padx=(14, 0))
+        if has_saved_book:
+            self.status.configure(text="Welcome back — your saved reading place is ready.")
+            self.progress.configure(value=0)
+            self.progress_percent.configure(text="")
+        else:
+            self.status.configure(text="Open an EPUB to begin.")
+            self.progress.configure(value=0)
+            self.progress_percent.configure(text="")
+
+    def resume_last_book(self):
+        """Resume the last book, or let the user locate it if it has moved."""
+        path, title, _inferred = last_opened_book_info(self.state)
+        if not path:
+            self.open_dialog()
+            return
+        if os.path.isfile(path):
+            cached = self.last_book_preview if self.last_book_preview_path == path else None
+            self.open_book(path, loaded_book=cached)
+            return
+        messagebox.showinfo(
+            "Last book not found",
+            f"Linux EPUB Reader cannot find “{title}” at its saved location.\n\n"
+            "Please select the same DRM-free EPUB file again. Its saved chapter, "
+            "reading position and bookmarks will be restored.",
+            parent=self,
+        )
+        initial_dir = os.path.dirname(path)
+        if not os.path.isdir(initial_dir):
+            initial_dir = os.path.expanduser("~")
+        selected = filedialog.askopenfilename(
+            parent=self,
+            title="Locate your last EPUB book",
+            initialdir=initial_dir,
+            filetypes=[("EPUB books", "*.epub"), ("All files", "*.*")],
+        )
+        if selected:
+            self.open_book(selected, restore_from_path=path)
+
+    def open_book(self, path, restore_from_path=None, loaded_book=None):
         path = os.path.abspath(os.path.expanduser(path))
         drm_type = detect_drm_input(path)
         if drm_type:
             self._show_drm_notice(path, drm_type)
             return
         try:
-            book = EPUBBook(path)
+            book = loaded_book if loaded_book is not None and loaded_book.path == path else EPUBBook(path)
         except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
             messagebox.showerror("Could not open EPUB", str(exc))
             return
+        if restore_from_path:
+            restore_book_state_for_moved_file(self.state, restore_from_path, path)
         self.book = book
+        self.last_book_preview = None
+        self.last_book_preview_path = ""
+        self.welcome_view.pack_forget()
+        self.heading.pack(fill=tk.X, anchor="w", pady=(0, 12), before=self.text_frame)
+        self.text_frame.pack(fill=tk.BOTH, expand=True)
         self.current_key = self._book_key(path)
+        remember_last_opened_book(self.state, path, book.title)
+        try:
+            self._save_state()
+        except OSError:
+            pass
+        self._refresh_resume_ui()
         st = self._book_state()
         self.index = max(0, min(len(book.chapters) - 1, int(st.get("chapter", 0))))
         self.rendered_book_key = None
@@ -1205,23 +1625,15 @@ class Reader(tk.Tk):
         outer.pack(fill=tk.BOTH, expand=True)
         cover_frame = ttk.Frame(outer)
         cover_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 16))
-        self._cover_photo = None
-        if b.cover_bytes:
-            try:
-                try:
-                    from PIL import Image, ImageTk
-                    im = Image.open(io.BytesIO(b.cover_bytes))
-                    im.thumbnail((210, 320))
-                    self._cover_photo = ImageTk.PhotoImage(im)
-                except ImportError:
-                    # Tk's built-in image decoder handles PNG/GIF on common Linux builds.
-                    self._cover_photo = tk.PhotoImage(data=base64.b64encode(b.cover_bytes))
-                    if self._cover_photo.width() > 210 or self._cover_photo.height() > 320:
-                        factor = max(1, self._cover_photo.width() // 210, self._cover_photo.height() // 320)
-                        self._cover_photo = self._cover_photo.subsample(factor, factor)
-                ttk.Label(cover_frame, image=self._cover_photo).pack(anchor="n")
-            except Exception:
-                ttk.Label(cover_frame, text=f"Cover included\n({b.cover_name})", width=24).pack(anchor="n")
+        cover_photo = self._create_cover_photo(b.cover_bytes, (210, 320))
+        if cover_photo is not None:
+            win.cover_photo = cover_photo
+            ttk.Label(cover_frame, image=cover_photo).pack(anchor="n")
+        elif b.cover_bytes:
+            ttk.Label(
+                cover_frame, text=f"Cover format cannot be displayed\n({b.cover_name})",
+                width=24, justify=tk.CENTER,
+            ).pack(anchor="n")
         else:
             ttk.Label(cover_frame, text="No cover image\nsupplied", width=24).pack(anchor="n")
         info = ttk.Frame(outer)

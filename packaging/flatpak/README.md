@@ -17,7 +17,7 @@ Replace `VERSION` with the version shown on the release page. To remove it:
 flatpak uninstall --user io.github.schmookey.LinuxEpubReader
 ```
 
-The bundle contains the app, a matching Python 3.13 interpreter with Tkinter, and Tcl/Tk components, but **not** the full Freedesktop runtime. If that runtime is missing, Flatpak downloads it from Flathub during installation, so the first installation may need internet access. Once installed, the reader itself has no network permission.
+The bundle contains the app, CPython 3.15.2 with Tkinter, Tcl/Tk 9.1.0, and Pillow 13.0.0 for JPEG and other book-cover image formats. It uses the separately installed Freedesktop Platform 26.08 runtime and does **not** bundle that runtime. If the runtime is missing, Flatpak downloads it from Flathub during installation, so the first installation may need internet access. Once installed, the reader itself has no network permission.
 
 ## Sandbox and privacy
 
@@ -31,13 +31,15 @@ On Linux with Flatpak and flatpak-builder installed:
 
 ```bash
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+flatpak install --user flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
 flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir io.github.schmookey.LinuxEpubReader.yml
 mkdir -p dist
-flatpak build-bundle repo dist/linux-epub-reader-0.13.7.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak build-bundle repo dist/linux-epub-reader-0.13.8.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 ```
 
-The GitHub Actions workflow builds the bundle when packaging or application files change, saves a downloadable workflow artifact, and attaches the bundle to newly published releases. To attach a bundle to an existing release, use **Actions → Standalone Flatpak → Run workflow** and supply a source ref and release tag.
+The GitHub Actions workflows use Ubuntu 26.04 and current major versions of the GitHub Actions (checkout v7, setup-python v7 and upload-artifact v7). Automated tests cover Python 3.12.16 (the current Linux Mint/Ubuntu baseline) and Python 3.15.2. The Flatpak itself is built and smoke-tested with Python 3.15.2, Tcl/Tk 9.1.0 and Freedesktop 26.08. Tcl/Tk source tags are pinned to their upstream release commits; the Python source archive is SHA-256 verified.
+
+The workflow builds the bundle when packaging or application files change, saves a downloadable workflow artifact, and attaches the bundle to newly published releases. To attach a bundle to an existing release, use **Actions → Standalone Flatpak → Run workflow** and supply a source ref and release tag.
 
 ## Important notes
 

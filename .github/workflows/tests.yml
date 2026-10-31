@@ -6,12 +6,19 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep the current Linux Mint/Ubuntu Python baseline covered as well as latest stable Python.
+        python-version: ["3.12.16", "3.15.2"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          python-version: "3.x"
+          python-version: ${{ matrix.python-version }}
+      - name: Report Python version
+        run: python -VV
       - name: Check Python syntax
         run: python -m py_compile src/linux_epub_reader.py tests/test_reader.py
       - name: Check build script syntax
@@ -19,11 +26,13 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Build Debian package
+        if: matrix.python-version == '3.15.2'
         run: bash scripts/build-deb.sh
       - name: Upload Debian package
-        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.15.2'
+        uses: actions/upload-artifact@v7
         with:
           name: linux-epub-reader-deb
-          path: dist/linux-epub-reader_0.13.7-1_all.deb
+          path: dist/linux-epub-reader_0.13.9-1_all.deb
           if-no-files-found: error
           retention-days: 30

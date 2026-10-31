@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.9-1 — Illustrated welcome-back panel
+
+- Replace the title-only welcome-back message with a book panel showing the front cover, title, author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
+- Show the saved chapter, chapter position and estimated overall reading progress, with a prominent Linux Mint-green Resume button.
+- Load the last book locally for the welcome preview and reuse the parsed book when resuming; no book contents or reading history leave the computer.
+- Improve EPUB 2 and EPUB 3 cover metadata detection and resolve escaped image paths.
+- Bundle Pillow in the Flatpak and depend on the distribution's python3-pil package for JPEG cover display; use Tk's native decoder as a fallback for supported formats.
+
+
+## 0.13.8-1 — Resume last book
+
+- Add a Resume last book action to the toolbar and a welcome-back message showing the last book.
+- Save the last successfully opened book's path and title locally; keep each book's chapter, reading position and bookmarks in its existing per-book record.
+- Restore the saved chapter and position when resuming, without opening another application or using a network connection.
+- If the saved book has moved, let the user locate it again and carry its saved position/bookmarks to the selected path without overwriting existing state.
+- Offer a best-effort resume suggestion for existing v0.13.7 reading-state files, which did not record the global last-opened book.
+- Add regression tests for resume-state migration, moved files and welcome-back messaging.
+- Modernise CI to Ubuntu 26.04 and current GitHub Actions; test Python 3.12.16 and 3.15.2.
+- Modernise the standalone Flatpak to CPython 3.15.2, Tcl/Tk 9.1.0 and Freedesktop Platform 26.08, with explicit in-sandbox version checks.
+
+
 ## 0.13.7-1 — Practical welcome and privacy information
 
 - Replace the welcome page with a practical description of reading, contents navigation, search, bookmarks and full-screen controls.
