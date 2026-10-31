@@ -1,4 +1,4 @@
-name: Publish Linux EPUB Reader v0.13.7 release
+name: Publish Linux EPUB Reader release
 
 on:
   push:
@@ -6,63 +6,84 @@ on:
       - main
     paths:
       - .github/workflows/publish-release-v0.13.7.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up the pinned Python
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.x"
+          python-version: "3.15.2"
 
-      - name: Check syntax and run tests
+      - name: Verify source and run tests
         run: |
+          python -VV
           python -m py_compile src/linux_epub_reader.py tests/test_reader.py
           bash -n scripts/build-deb.sh
           python -m unittest discover -s tests -v
 
-      - name: Build Debian installer
+      - name: Build and verify Debian installer
+        id: package
         run: |
+          set -euo pipefail
+          APP_VERSION="$(grep -m1 '^APP_VERSION = ' src/linux_epub_reader.py | cut -d '"' -f 2)"
+          test -n "$APP_VERSION"
+          PACKAGE_VERSION="${APP_VERSION}-1"
+          PACKAGE="dist/linux-epub-reader_${PACKAGE_VERSION}_all.deb"
+
           bash scripts/build-deb.sh
-          dpkg-deb --info dist/linux-epub-reader_0.13.7-1_all.deb
-          test "$(dpkg-deb -f dist/linux-epub-reader_0.13.7-1_all.deb Package)" = "linux-epub-reader"
-          test "$(dpkg-deb -f dist/linux-epub-reader_0.13.7-1_all.deb Version)" = "0.13.7-1"
-          test "$(dpkg-deb -f dist/linux-epub-reader_0.13.7-1_all.deb Architecture)" = "all"
+          test -f "$PACKAGE"
+          dpkg-deb --info "$PACKAGE"
+          test "$(dpkg-deb -f "$PACKAGE" Package)" = "linux-epub-reader"
+          test "$(dpkg-deb -f "$PACKAGE" Version)" = "$PACKAGE_VERSION"
+          test "$(dpkg-deb -f "$PACKAGE" Architecture)" = "all"
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release and attach Debian installer
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v0.13.7
-          name: Linux EPUB Reader v0.13.7
-          target_commitish: main
-          draft: false
-          prerelease: false
-          make_latest: true
-          body: |
-            ## Linux EPUB Reader v0.13.7
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.package.outputs.app_version }}"
+          TITLE="Linux EPUB Reader ${TAG}"
 
-            This release updates the welcome page with practical information about reading features, saved reading data, its local file location, and the app's offline-only privacy design.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
 
-            ### Included
-            - Continuous EPUB reading with a left-hand contents panel.
-            - Search, bookmarks, saved reading positions, chapter progress, and full-screen reading (F11; Esc to exit).
-            - One default typeface, Atkinson Hyperlegible, and the existing dark theme.
-            - Local reading-state storage at `~/.local/share/linux-epub-reader/reading_state.json`.
-            - No user accounts, cloud storage, reading-history uploads, analytics, or telemetry are implemented. The project is intended to remain offline-only.
+          cat > release-notes.md <<'NOTES'
+          ## Illustrated welcome-back panel
 
-            ### Important limitations
-            - This is a text-oriented EPUB reader, not a browser-grade EPUB renderer.
-            - Adobe DRM and ACSM fulfilment are not supported. The app shows local explanatory notices for protected or unsupported inputs and does not launch an external reader.
-            - The privacy wording describes the app's intended data handling; it is not a blanket legal certification of GDPR compliance.
+          This release adds a richer welcome-back page for continuing your last book.
 
-            The Debian installer is attached below. Automated syntax checks, unit tests, and Debian package metadata checks run as part of the release workflow.
-          files: dist/linux-epub-reader_0.13.7-1_all.deb
+          ### What's included
+          - Front-cover artwork on the welcome-back panel, with improved EPUB 2 and EPUB 3 cover detection.
+          - Book information including author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
+          - Saved chapter, chapter position and estimated overall reading progress.
+          - A prominent Linux Mint-green **Resume** button.
+          - JPEG cover-image support through Pillow.
+          - Improved recovery when the last book has moved or is no longer at its saved location.
+
+          ### Reading data and privacy
+          The reader keeps the last-book path, reading position and bookmarks in its existing local reading-state file. Book contents and reading history are not uploaded. The application remains designed for offline use.
+
+          ### Notes
+          This is a text-oriented EPUB reader, not a browser-grade EPUB renderer. Adobe DRM and ACSM fulfilment are not supported.
+          NOTES
+
+          gh release create "$TAG" "${{ steps.package.outputs.package }}" \
+            --title "$TITLE" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA" \
+            --latest
