@@ -1555,7 +1555,9 @@ class Reader(tk.Tk):
         self.audio_time_label.configure(text="Opening audiobook…")
         self.status.configure(text=f"Opening audiobook: {os.path.basename(path)}")
         if not self.audio_worker.submit(
-            "open", token, path, restore_position, chapter_index
+            "open", token, path, restore_position, chapter_index,
+            self.audio_volume_var.get(),
+            self.audio_speed_var.get().replace("×", ""),
         ):
             self.audio_loading = False
             messagebox.showerror(
