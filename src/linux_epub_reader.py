@@ -20,6 +20,7 @@ try:
     from audiobook_player import MPVBackend, AudioWorker, AudiobookError, format_time, extract_cover_art
 except ImportError:
     MPVBackend = None
+    AudioWorker = None
     AudiobookError = RuntimeError
     format_time = lambda value: "0:00"
     extract_cover_art = lambda path: None
