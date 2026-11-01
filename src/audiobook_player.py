@@ -13,6 +13,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import threading
 
 
 class AudiobookError(RuntimeError):
@@ -138,6 +139,7 @@ class MPVBackend:
         self._request_id = 0
         self._ipc_socket = None
         self._ipc_buffer = bytearray()
+        self._ipc_lock = threading.RLock()
         self._stderr_log_path = None
         self._stderr_log = None
         self._mpv_log_path = None
@@ -245,6 +247,11 @@ class MPVBackend:
         self._ipc_buffer = bytearray()
 
     def _request(self, payload):
+        """Serialize access to the shared MPV IPC stream across UI and worker threads."""
+        with self._ipc_lock:
+            return self._request_locked(payload)
+
+    def _request_locked(self, payload):
         if not self._socket_path:
             raise AudiobookError("The audiobook playback engine is not running.")
         self._request_id += 1
