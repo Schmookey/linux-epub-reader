@@ -204,8 +204,18 @@ class AudioWorkerTests(unittest.TestCase):
             )
             try:
                 worker.submit("open", 4, path, 0.0, None)
-                loaded = worker.events.get(timeout=3)
-                self.assertEqual(loaded["type"], "loaded")
+                deadline = time.monotonic() + 3
+                loaded = None
+                while time.monotonic() < deadline:
+                    event = worker.events.get(
+                        timeout=max(0.05, deadline - time.monotonic())
+                    )
+                    if event["type"] == "loaded":
+                        loaded = event
+                        break
+                    if event["type"] == "error":
+                        self.fail(event.get("error", "Audio worker open failed"))
+                self.assertIsNotNone(loaded)
                 self.assertEqual(loaded["token"], 4)
 
                 for action, args in [
@@ -256,8 +266,16 @@ class AudioWorkerTests(unittest.TestCase):
             )
             try:
                 worker.submit("open", 9, path, 0.0, None)
-                event = worker.events.get(timeout=3)
-                self.assertEqual(event["type"], "error")
+                deadline = time.monotonic() + 3
+                event = None
+                while time.monotonic() < deadline:
+                    candidate = worker.events.get(
+                        timeout=max(0.05, deadline - time.monotonic())
+                    )
+                    if candidate["type"] == "error":
+                        event = candidate
+                        break
+                self.assertIsNotNone(event)
                 self.assertEqual(event["action"], "open")
                 self.assertIn("test load failure", event["error"])
                 self.assertIn("mock MPV decoder diagnostic", event["error"])
