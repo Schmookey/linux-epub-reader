@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.14-1 — Audiobook control responsiveness and navigation
+
+- Reduce routine MPV status polling to the live playback position and pause state, leaving the audio worker available to process transport controls promptly.
+- Report essential MPV status/IPC failures instead of silently presenting a frozen playback position.
+- Execute 30-second skips relative to the latest position read by the MPV-owning worker.
+- Toggle mute on the MPV-owning thread using its latest acknowledged mute state, preventing stale GUI snapshots from reversing rapid clicks.
+- Show visible acknowledgement or errors for playback commands.
+- Keep manual Contents-panel scrolling in place instead of repeatedly jumping back to the playing chapter.
+- Add a real MPV-through-AudioWorker Flatpak integration check for playback position advancement, pause, skip and mute.
+
 ## 0.13.13-1 — Single-owner audiobook playback
 
 - Replace the separate audiobook loading and status-monitor threads with one dedicated audio worker that owns MPV for its entire lifetime.
