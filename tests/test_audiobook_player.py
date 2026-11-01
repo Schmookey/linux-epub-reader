@@ -179,8 +179,8 @@ class AudioWorkerTests(unittest.TestCase):
                 self._record("load", path)
                 return {"duration": 10.0, "paused": True}
 
-            def status(self):
-                self._record("status")
+            def status(self, include_details=True):
+                self._record("status", include_details)
                 return {
                     "duration": 10.0, "time_pos": 0.0, "paused": True,
                     "chapter": 0, "chapters": [], "volume": 70.0,
