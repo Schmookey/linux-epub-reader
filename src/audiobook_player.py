@@ -433,3 +433,170 @@ class MPVBackend:
         self._mpv_log_path = None
         if runtime_dir:
             shutil.rmtree(runtime_dir, ignore_errors=True)
+
+
+
+class AudioWorker:
+    """Own one MPV backend on one thread and serialise every audio operation.
+
+    The Tk interface communicates through submit() and events only. The worker
+    creates MPV, opens media, executes controls and polls status; no other
+    thread is allowed to touch the backend or its IPC socket.
+    """
+
+    def __init__(self, backend_factory=None, poll_interval=1.0):
+        import queue
+
+        self._backend_factory = backend_factory or MPVBackend
+        self._poll_interval = max(0.1, float(poll_interval))
+        self._commands = queue.Queue()
+        self.events = queue.Queue()
+        self._shutdown_requested = threading.Event()
+        self._backend = None
+        self._active_path = None
+        self._active_token = 0
+        self._thread = threading.Thread(
+            target=self._run, name="M4B audio owner", daemon=True
+        )
+        self._thread.start()
+
+    def submit(self, action, token=0, *args):
+        """Queue one operation for the sole MPV-owning thread."""
+        if self._shutdown_requested.is_set():
+            return False
+        self._commands.put((str(action), int(token), args))
+        return True
+
+    def shutdown(self):
+        """Ask the owner thread to close MPV after its current operation."""
+        if not self._shutdown_requested.is_set():
+            self._shutdown_requested.set()
+            self._commands.put(("shutdown", 0, ()))
+
+    def join(self, timeout=None):
+        """Wait for worker shutdown; intended for tests, never the Tk event loop."""
+        self._thread.join(timeout)
+
+    @property
+    def is_alive(self):
+        return self._thread.is_alive()
+
+    def _emit(self, event_type, token, **values):
+        event = {"type": event_type, "token": token}
+        event.update(values)
+        self.events.put(event)
+
+    def _open(self, token, path, restore_position=0.0, chapter_index=None):
+        if self._backend is None:
+            self._backend = self._backend_factory()
+        try:
+            status = self._backend.load(path)
+            if chapter_index is not None:
+                self._backend.select_chapter(chapter_index)
+            elif restore_position and float(restore_position) > 0:
+                self._backend.seek(float(restore_position))
+            # Take the initial snapshot after restoring the requested position.
+            status = self._backend.status()
+            cover_bytes = extract_cover_art(path)
+        except Exception:
+            self._active_path = None
+            try:
+                self._backend.close()
+            except Exception:
+                pass
+            self._backend = None
+            raise
+        self._active_path = path
+        self._active_token = token
+        self._emit(
+            "loaded", token, path=path, status=status, cover_bytes=cover_bytes
+        )
+
+    def _execute(self, action, token, args):
+        if action == "open":
+            path, restore_position, chapter_index = args
+            self._open(token, path, restore_position, chapter_index)
+            return
+        if self._backend is None or not self._active_path:
+            raise AudiobookError("Open an audiobook before using the playback controls.")
+
+        if action == "play":
+            self._backend.play()
+        elif action == "pause":
+            self._backend.pause()
+        elif action == "volume":
+            self._backend.set_volume(args[0])
+        elif action == "mute":
+            self._backend.set_mute(args[0])
+        elif action == "speed":
+            self._backend.set_speed(args[0])
+        elif action == "seek":
+            self._backend.seek(args[0])
+        elif action == "chapter":
+            self._backend.select_chapter(args[0])
+        elif action == "stop":
+            # Stop means return to the beginning while keeping the book loaded.
+            self._backend.seek(0)
+            self._backend.pause()
+        else:
+            raise AudiobookError("Unknown audiobook operation.")
+        self._publish_status()
+
+    def _publish_status(self):
+        if self._backend is None or not self._active_path:
+            return
+        try:
+            status = self._backend.status()
+        except Exception as exc:
+            self._emit(
+                "error", self._active_token, action="status",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        self._emit("status", self._active_token, status=status)
+
+    def _run(self):
+        """Run the command queue and periodic status reads on the same thread."""
+        import queue
+
+        next_poll = None
+        try:
+            while True:
+                timeout = None
+                if self._active_path:
+                    if next_poll is None:
+                        next_poll = time.monotonic() + self._poll_interval
+                    timeout = max(0.0, next_poll - time.monotonic())
+                try:
+                    action, token, args = self._commands.get(timeout=timeout)
+                except queue.Empty:
+                    self._publish_status()
+                    next_poll = time.monotonic() + self._poll_interval
+                    continue
+
+                if action == "shutdown":
+                    break
+                try:
+                    self._execute(action, token, args)
+                except Exception as exc:
+                    if action == "open":
+                        self._active_path = None
+                    self._emit(
+                        "error", token, action=action,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+
+                if self._active_path:
+                    if next_poll is None:
+                        next_poll = time.monotonic() + self._poll_interval
+                    elif time.monotonic() >= next_poll:
+                        self._publish_status()
+                        next_poll = time.monotonic() + self._poll_interval
+        finally:
+            if self._backend is not None:
+                try:
+                    self._backend.close()
+                except Exception:
+                    pass
+                self._backend = None
+            self._active_path = None
