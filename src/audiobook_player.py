@@ -398,7 +398,12 @@ class MPVBackend:
         def prop(name, required=False):
             try:
                 return self._request({"command": ["get_property", name]})
-            except AudiobookError:
+            except AudiobookError as exc:
+                # mpv may not expose time-pos immediately after load while
+                # the file is paused. That is a normal transient state;
+                # transport/socket failures must still reach the worker.
+                if "property unavailable" in str(exc).casefold():
+                    return None
                 if required:
                     raise
                 return None
