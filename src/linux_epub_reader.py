@@ -1412,8 +1412,6 @@ class Reader(tk.Tk):
         metadata = status.get("metadata", {}) or {}
         self.audio_title = str(metadata.get("title") or self.audio_title)
         record["title"] = self.audio_title
-        self.audio_title_label.configure(text=self.audio_title)
-        self.audio_path_label.configure(text=path)
         self._show_audio_cover(extract_cover_art(path))
         self._populate_audio_contents()
         try:
@@ -1425,7 +1423,6 @@ class Reader(tk.Tk):
                 self.audio_backend.seek(position)
             except AudiobookError:
                 pass
-        self.audio_play_button.configure(text="Play")
         self._audio_update_tick()
         self._save_audio_position()
 
