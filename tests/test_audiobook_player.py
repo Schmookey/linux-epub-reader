@@ -2,6 +2,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -226,14 +227,21 @@ class AudioWorkerTests(unittest.TestCase):
                 ]:
                     worker.submit(action, 4, *args)
 
-                observed = set()
+                completed = set()
+                expected = {
+                    "play", "pause", "volume", "mute", "speed",
+                    "seek", "chapter", "stop", "skip", "toggle_mute",
+                }
                 deadline = time.monotonic() + 3
-                while len(observed) < 10 and time.monotonic() < deadline:
-                    event = worker.events.get(timeout=max(0.05, deadline-time.monotonic()))
-                    if event["type"] == "status":
-                        # Each completed command publishes a status snapshot.
-                        observed.add(len(observed))
-                self.assertEqual(len(observed), 10)
+                while not expected.issubset(completed) and time.monotonic() < deadline:
+                    event = worker.events.get(
+                        timeout=max(0.05, deadline - time.monotonic())
+                    )
+                    if event["type"] == "command_completed":
+                        completed.add(event.get("action"))
+                    elif event["type"] == "error":
+                        self.fail(event.get("error", "Audio command failed"))
+                self.assertTrue(expected.issubset(completed), completed)
             finally:
                 worker.shutdown()
                 worker.join(timeout=3)
