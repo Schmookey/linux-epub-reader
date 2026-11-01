@@ -59,6 +59,70 @@ def chapter_rows(chapters):
     return rows
 
 
+def _iter_mp4_atoms(handle, start, end):
+    """Yield (fourcc, payload_start, payload_end) for a bounded MP4 atom range."""
+    cursor = max(0, int(start))
+    end = max(cursor, int(end))
+    while cursor + 8 <= end:
+        handle.seek(cursor)
+        header = handle.read(8)
+        if len(header) != 8:
+            return
+        size = int.from_bytes(header[:4], "big")
+        kind = header[4:8]
+        header_size = 8
+        if size == 1:
+            extended = handle.read(8)
+            if len(extended) != 8:
+                return
+            size = int.from_bytes(extended, "big")
+            header_size = 16
+        elif size == 0:
+            size = end - cursor
+        if size < header_size or cursor + size > end:
+            return
+        payload_start = cursor + header_size
+        payload_end = cursor + size
+        yield kind, payload_start, payload_end
+        cursor += size
+
+
+def extract_cover_art(path, max_bytes=20 * 1024 * 1024):
+    """Extract an embedded iTunes/MP4 covr image without loading the whole audiobook."""
+    containers = {b"moov", b"udta", b"meta", b"ilst"}
+    try:
+        with open(path, "rb") as handle:
+            size = os.fstat(handle.fileno()).st_size
+            pending = [(0, size, 0)]
+            while pending:
+                start, end, depth = pending.pop()
+                if depth > 12:
+                    continue
+                for kind, payload_start, payload_end in _iter_mp4_atoms(handle, start, end):
+                    if kind == b"covr":
+                        for child_kind, child_start, child_end in _iter_mp4_atoms(handle, payload_start, payload_end):
+                            if child_kind != b"data" or child_end - child_start <= 8:
+                                continue
+                            image_size = child_end - child_start - 8
+                            if image_size > max_bytes:
+                                continue
+                            handle.seek(child_start + 8)
+                            image = handle.read(image_size)
+                            if image.startswith((b"\\x89PNG\\r\\n\\x1a\\n", b"\\xff\\xd8\\xff",
+                                                 b"GIF87a", b"GIF89a", b"BM")) or (
+                                len(image) >= 12 and image[:4] == b"RIFF" and image[8:12] == b"WEBP"
+                            ):
+                                return image
+                    if kind in containers:
+                        # The 'meta' atom starts with a four-byte version/flags field.
+                        child_start = payload_start + (4 if kind == b"meta" else 0)
+                        if child_start <= payload_end:
+                            pending.append((child_start, payload_end, depth + 1))
+    except (OSError, ValueError, OverflowError):
+        return None
+    return None
+
+
 class MPVBackend:
     """Small synchronous controller for one private mpv audio-only process."""
 
@@ -264,8 +328,33 @@ class MPVBackend:
         # Return whether playback is active after the toggle (True = playing).
         return paused
 
+    def play(self):
+        self.command("set_property", "pause", False)
+
     def pause(self):
         self.command("set_property", "pause", True)
+
+    def set_volume(self, value):
+        try:
+            volume = max(0.0, min(100.0, float(value)))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise AudiobookError("Enter a valid volume level.") from exc
+        self.command("set_property", "volume", volume)
+        return volume
+
+    def set_mute(self, muted):
+        self.command("set_property", "mute", bool(muted))
+        return bool(muted)
+
+    def set_speed(self, value):
+        try:
+            speed = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise AudiobookError("Choose a valid playback speed.") from exc
+        if not 0.5 <= speed <= 2.0:
+            raise AudiobookError("Playback speed must be between 0.5× and 2.0×.")
+        self.command("set_property", "speed", speed)
+        return speed
 
     def stop(self):
         if self.process and self.process.poll() is None:
@@ -301,6 +390,9 @@ class MPVBackend:
             "chapter": prop("chapter"),
             "chapters": chapter_rows(prop("chapter-list")),
             "metadata": prop("metadata") or {},
+            "volume": prop("volume"),
+            "mute": prop("mute"),
+            "speed": prop("speed"),
         }
 
     def close(self):
