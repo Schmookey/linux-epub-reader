@@ -1535,7 +1535,7 @@ class Reader(tk.Tk):
             )
             return
 
-        self._stop_audio_status_monitor()
+        previous_monitor = self._stop_audio_status_monitor()
         if self.audio_tick_id:
             try:
                 self.after_cancel(self.audio_tick_id)
@@ -1567,7 +1567,7 @@ class Reader(tk.Tk):
         self.status.configure(text=f"Opening audiobook: {os.path.basename(path)}")
         worker = threading.Thread(
             target=self._load_audiobook_worker,
-            args=(token, path, restore_position, chapter_index, cancel_event),
+            args=(token, path, restore_position, chapter_index, cancel_event, previous_monitor),
             name="M4B loader",
             daemon=True,
         )
@@ -1575,9 +1575,16 @@ class Reader(tk.Tk):
         worker.start()
 
     def _load_audiobook_worker(self, token, path, restore_position,
-                               chapter_index, cancel_event):
+                               chapter_index, cancel_event, previous_monitor=None):
         """Perform MPV probing, seeking and cover-file I/O outside the Tk thread."""
         try:
+            # A previous status request may still be finishing on the shared MPV IPC
+            # socket. Wait here, never on Tk, before replacing the loaded media.
+            if previous_monitor and previous_monitor is not threading.current_thread():
+                previous_monitor.join()
+            if cancel_event.is_set():
+                self.audio_backend.close()
+                return
             status = self.audio_backend.load(path)
             if chapter_index is not None:
                 self.audio_backend.select_chapter(chapter_index)
@@ -1599,6 +1606,10 @@ class Reader(tk.Tk):
                 except Exception:
                     pass
                 return
+            try:
+                self.audio_backend.close()
+            except Exception:
+                pass
             detail = f"{type(exc).__name__}: {exc}"
             self._audio_load_queue.put(
                 (token, path, None, None, detail)
@@ -1615,6 +1626,10 @@ class Reader(tk.Tk):
                 self._audio_load_cancel_event = None
                 self._audio_load_thread = None
                 if error:
+                    self.audio_is_active = False
+                    self.audio_path = None
+                    self._last_audio_status = None
+                    self.audio_chapters = []
                     self.audio_time_label.configure(text="Audiobook could not be opened")
                     self.status.configure(text="Audiobook could not be opened.")
                     messagebox.showerror(
@@ -1624,8 +1639,6 @@ class Reader(tk.Tk):
                         "readable and is not DRM-protected.",
                         parent=self,
                     )
-                    if self.audio_is_active:
-                        self._audio_update_tick()
                     continue
                 self._finish_audiobook_open(path, status, cover_bytes)
         except queue.Empty:
@@ -2751,6 +2764,7 @@ class Reader(tk.Tk):
         ttk.Button(buttons, text="Delete selected", command=remove_mark).pack(side=tk.LEFT, padx=6)
 
     def on_close(self):
+        self._audio_close_requested = True
         monitor_thread = self._stop_audio_status_monitor()
         if self.audio_loading:
             # Let the worker close MPV when its bounded load/probe operation returns.
@@ -2784,8 +2798,15 @@ class Reader(tk.Tk):
                 pass
         if self.audio_backend:
             # Do not wait for a possibly in-flight MPV IPC request on the Tk thread.
+            backend = self.audio_backend
+
+            def finish_audio_shutdown():
+                if monitor_thread and monitor_thread is not threading.current_thread():
+                    monitor_thread.join()
+                backend.close()
+
             threading.Thread(
-                target=self.audio_backend.close,
+                target=finish_audio_shutdown,
                 name="M4B shutdown",
                 daemon=True,
             ).start()
