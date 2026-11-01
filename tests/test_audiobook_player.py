@@ -47,6 +47,28 @@ class AudiobookHelpersTests(unittest.TestCase):
     def test_chapter_rows_reject_non_list_input(self):
         self.assertEqual(audio.chapter_rows(None), [])
 
+    def test_extract_cover_art_reads_embedded_jpeg_from_mp4_covr_atom(self):
+        def atom(kind, payload):
+            return (len(payload) + 8).to_bytes(4, "big") + kind + payload
+
+        jpeg = b"\\xff\\xd8\\xffmock-jpeg-data"
+        data = atom(b"data", (13).to_bytes(4, "big") + b"\\0\\0\\0\\0" + jpeg)
+        covr = atom(b"covr", data)
+        ilst = atom(b"ilst", covr)
+        meta = atom(b"meta", b"\\0\\0\\0\\0" + ilst)
+        udta = atom(b"udta", meta)
+        moov = atom(b"moov", udta)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "cover.m4b")
+            Path(path).write_bytes(moov)
+            self.assertEqual(audio.extract_cover_art(path), jpeg)
+
+    def test_extract_cover_art_returns_none_for_missing_or_invalid_art(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "empty.m4b")
+            Path(path).write_bytes(b"not an mp4")
+            self.assertIsNone(audio.extract_cover_art(path))
+
 
 class IPCProtocolTests(unittest.TestCase):
     def test_persistent_connection_ignores_events_and_matches_command_replies(self):
@@ -124,6 +146,15 @@ class BackendCommandTests(unittest.TestCase):
         backend, calls = self.make_backend()
         backend.select_chapter(3)
         self.assertEqual(calls[-1]["command"], ["set_property", "chapter", 3])
+
+    def test_volume_mute_and_speed_controls_use_mpv_properties(self):
+        backend, calls = self.make_backend()
+        backend.set_volume(65)
+        backend.set_mute(True)
+        backend.set_speed(1.25)
+        self.assertEqual(calls[-3]["command"], ["set_property", "volume", 65.0])
+        self.assertEqual(calls[-2]["command"], ["set_property", "mute", True])
+        self.assertEqual(calls[-1]["command"], ["set_property", "speed", 1.25])
 
 
 if __name__ == "__main__":
