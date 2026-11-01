@@ -1564,7 +1564,7 @@ class Reader(tk.Tk):
 
     def _poll_audio_load_queue(self):
         """Apply audio-worker events on Tk's thread; MPV is never accessed here."""
-        if self._audio_close_requested:
+        if self._audio_close_requested or self.audio_worker is None:
             return
         try:
             while True:
