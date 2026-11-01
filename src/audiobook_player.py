@@ -403,6 +403,11 @@ class MPVBackend:
         }
 
     def close(self):
+        """Close MPV safely even if the background status monitor is polling."""
+        with self._ipc_lock:
+            self._close_locked()
+
+    def _close_locked(self):
         self._disconnect_ipc()
         process, self.process = self.process, None
         if process and process.poll() is None:
