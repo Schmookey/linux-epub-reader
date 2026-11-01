@@ -108,7 +108,7 @@ def extract_cover_art(path, max_bytes=20 * 1024 * 1024):
                                 continue
                             handle.seek(child_start + 8)
                             image = handle.read(image_size)
-                            if image.startswith((b"\\x89PNG\\r\\n\\x1a\\n", b"\\xff\\xd8\\xff",
+                            if image.startswith((bytes.fromhex("89504e470d0a1a0a"), bytes.fromhex("ffd8ff"),
                                                  b"GIF87a", b"GIF89a", b"BM")) or (
                                 len(image) >= 12 and image[:4] == b"RIFF" and image[8:12] == b"WEBP"
                             ):
