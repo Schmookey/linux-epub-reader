@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Linux EPUB Reader project contributors
 # SPDX-License-Identifier: GPL-3.0-only
-"""Linux EPUB Reader v0.13.13 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.14 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -26,7 +26,7 @@ except ImportError:
     extract_cover_art = lambda path: None
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.13"
+APP_VERSION = "0.13.14"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
