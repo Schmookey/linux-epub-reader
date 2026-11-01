@@ -99,8 +99,6 @@ class MPVBackend:
         command = [
             self.executable,
             "--no-config",
-            "--load-scripts=no",
-            "--ytdl=no",
             "--idle=yes",
             "--force-window=no",
             "--no-video",
