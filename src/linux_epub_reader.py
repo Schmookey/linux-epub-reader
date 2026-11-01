@@ -17,11 +17,12 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 try:
-    from audiobook_player import MPVBackend, AudiobookError, format_time
+    from audiobook_player import MPVBackend, AudiobookError, format_time, extract_cover_art
 except ImportError:
     MPVBackend = None
     AudiobookError = RuntimeError
     format_time = lambda value: "0:00"
+    extract_cover_art = lambda path: None
 
 APP_NAME = "Linux EPUB Reader"
 APP_VERSION = "0.13.10"
@@ -1407,8 +1408,6 @@ class Reader(tk.Tk):
         self.text_frame.pack_forget()
         self.welcome_view.pack_forget()
         self.audio_screen.pack(fill=tk.BOTH, expand=True)
-        self.audio_title_label.configure(text=self.audio_title)
-        self.audio_path_label.configure(text=path)
         self._refresh_audio_chapters(status.get("chapters", []))
         metadata = status.get("metadata", {}) or {}
         self.audio_title = str(metadata.get("title") or self.audio_title)
