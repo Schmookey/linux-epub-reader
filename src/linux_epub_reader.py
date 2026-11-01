@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Linux EPUB Reader project contributors
 # SPDX-License-Identifier: GPL-3.0-only
-"""Linux EPUB Reader v0.13.9 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.11 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
@@ -25,7 +25,7 @@ except ImportError:
     extract_cover_art = lambda path: None
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.10"
+APP_VERSION = "0.13.11"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -426,6 +426,69 @@ def clean_text(value):
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def audiobook_display_chapter_title(title, index):
+    """Replace file/track numbering with a useful chapter label, preserving real titles."""
+    value = clean_text(str(title or ""))
+    value = re.sub(
+        r"^(?:(?:audio\s*)?file|track)\s*0*\d+\s*[-:._–—)]*\s*",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(r"^0*\d+\s*[-:._–—)]\s*", "", value)
+    if not value or re.fullmatch(
+        r"(?:chapter|track|file)?\s*#?\s*0*\d+", value, flags=re.IGNORECASE
+    ):
+        return f"Chapter {int(index) + 1}"
+    return value
+
+
+def wrap_audio_chapter_title(title, font, max_width):
+    """Wrap a chapter name by measured pixels so the Contents pane needs no sideways scrolling."""
+    value = clean_text(str(title or ""))
+    if not value:
+        return ""
+    width = max(40, int(max_width))
+    lines = []
+    current = ""
+
+    def split_long_word(word):
+        chunks = []
+        chunk = ""
+        for character in word:
+            candidate = chunk + character
+            if chunk and font.measure(candidate) > width:
+                chunks.append(chunk)
+                chunk = character
+            else:
+                chunk = candidate
+        if chunk:
+            chunks.append(chunk)
+        return chunks
+
+    for word in value.split():
+        if not current:
+            if font.measure(word) <= width:
+                current = word
+            else:
+                pieces = split_long_word(word)
+                lines.extend(pieces[:-1])
+                current = pieces[-1]
+            continue
+        candidate = current + " " + word
+        if font.measure(candidate) <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            if font.measure(word) <= width:
+                current = word
+            else:
+                pieces = split_long_word(word)
+                lines.extend(pieces[:-1])
+                current = pieces[-1]
+    if current:
+        lines.append(current)
+    return "\n".join(lines)
+
+
 def sidebar_width_for_labels(label_widths, available_width, minimum_width=250, reading_min_width=520, padding=72):
     """Calculate a measured sidebar width while leaving room for the reading pane.
 
@@ -742,6 +805,8 @@ class Reader(tk.Tk):
         self.audio_screen = None
         self.audio_is_active = False
         self.audio_seeking = False
+        self.audio_volume_dragging = False
+        self._audio_toc_entries = []
         self.index = 0
         self.font_size = 11
         self.line_spacing = 1.5
@@ -1282,13 +1347,13 @@ class Reader(tk.Tk):
             self._setting_toc_selection = False
 
     def _build_audiobook_screen(self):
-        """Build the cover-led audiobook player shown in the approved design."""
+        """Build the cover-led audiobook player to match the agreed visual design."""
         panel = tk.Frame(self.audio_screen, bg=APP_BG, bd=0)
         panel.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         self.audio_cover_photo = None
         self.audio_cover_box = tk.Frame(
             panel, bg="#090A0B", highlightthickness=1, highlightbackground=BORDER,
-            width=340, height=340,
+            width=380, height=380,
         )
         self.audio_cover_box.pack(pady=(8, 12))
         self.audio_cover_box.pack_propagate(False)
@@ -1302,26 +1367,30 @@ class Reader(tk.Tk):
             font=(FONT_NAME, 16, "bold"), wraplength=760, justify=tk.CENTER,
         )
         self.audio_chapter_title.pack(fill=tk.X, pady=(0, 16))
+
         controls = tk.Frame(panel, bg=APP_BG)
         controls.pack(pady=(0, 18))
-        button_style = {"bg": "#292D32", "fg": DEFAULT_FG, "activebackground": MINT_DARK,
-                        "activeforeground": "#FFFFFF", "relief": tk.FLAT,
-                        "bd": 0, "font": ("Sans", 19, "bold"), "width": 4, "height": 2,
-                        "cursor": "hand2"}
-        tk.Button(controls, text="⏪", command=lambda: self._audio_skip(-30), **button_style).pack(side=tk.LEFT, padx=6)
-        self.audio_pause_button = tk.Button(
-            controls, text="Ⅱ", command=self._audio_pause, **button_style
+        self.audio_rewind_button = self._make_round_audio_button(
+            controls, "⏪ 30", lambda: self._audio_skip(-30), size=96, font_size=15
         )
-        self.audio_pause_button.pack(side=tk.LEFT, padx=6)
-        self.audio_play_button = tk.Button(
-            controls, text="▶", command=self._audio_play, **button_style
+        self.audio_pause_button = self._make_round_audio_button(
+            controls, "Ⅱ", self._audio_pause, size=96, font_size=27
         )
-        self.audio_play_button.pack(side=tk.LEFT, padx=6)
-        tk.Button(controls, text="■", command=self._audio_stop, **button_style).pack(side=tk.LEFT, padx=6)
-        tk.Button(controls, text="⏩", command=lambda: self._audio_skip(30), **button_style).pack(side=tk.LEFT, padx=6)
+        self.audio_play_button = self._make_round_audio_button(
+            controls, "▶", self._audio_play, size=96, font_size=27
+        )
+        self.audio_stop_button = self._make_round_audio_button(
+            controls, "■", self._audio_stop, size=96, font_size=25
+        )
+        self.audio_forward_button = self._make_round_audio_button(
+            controls, "⏩ 30", lambda: self._audio_skip(30), size=96, font_size=15
+        )
+
         seek_row = tk.Frame(panel, bg=APP_BG)
         seek_row.pack(fill=tk.X, padx=18)
-        self.audio_elapsed_label = tk.Label(seek_row, text="0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9))
+        self.audio_elapsed_label = tk.Label(
+            seek_row, text="0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 10)
+        )
         self.audio_elapsed_label.pack(side=tk.LEFT)
         self.audio_position_var = tk.DoubleVar(value=0.0)
         self.audio_seek = ttk.Scale(
@@ -1331,20 +1400,44 @@ class Reader(tk.Tk):
         self.audio_seek.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
         self.audio_seek.bind("<ButtonPress-1>", self._audio_seek_start)
         self.audio_seek.bind("<ButtonRelease-1>", self._audio_seek_commit)
-        self.audio_remaining_label = tk.Label(seek_row, text="-0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9))
+        self.audio_remaining_label = tk.Label(
+            seek_row, text="-0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 10)
+        )
         self.audio_remaining_label.pack(side=tk.RIGHT)
+
         bottom = tk.Frame(panel, bg=APP_BG)
         bottom.pack(fill=tk.X, padx=22, pady=(24, 4))
         self.audio_volume_var = tk.DoubleVar(value=80)
-        tk.Label(bottom, text="◖", bg=APP_BG, fg=DEFAULT_FG, font=("Sans", 16)).pack(side=tk.LEFT)
-        self.audio_volume = ttk.Scale(
-            bottom, from_=0, to=100, variable=self.audio_volume_var,
-            command=self._audio_set_volume, length=180,
+        tk.Label(
+            bottom, text="◖))", bg=APP_BG, fg=DEFAULT_FG, font=("Sans", 16)
+        ).pack(side=tk.LEFT)
+        self.audio_volume = tk.Scale(
+            bottom, from_=0, to=100, orient=tk.HORIZONTAL,
+            variable=self.audio_volume_var, command=self._audio_set_volume,
+            showvalue=False, resolution=1, length=220, width=12,
+            sliderlength=24, relief=tk.FLAT, bd=0, highlightthickness=0,
+            bg=APP_BG, fg=DEFAULT_FG, troughcolor="#30343A",
+            activebackground=MINT_GREEN, sliderrelief=tk.FLAT,
+            cursor="hand2",
         )
-        self.audio_volume.pack(side=tk.LEFT, padx=8)
-        self.audio_mute_button = ttk.Button(bottom, text="Mute", command=self._audio_toggle_mute)
+        self.audio_volume.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 8))
+        self.audio_volume.bind(
+            "<ButtonPress-1>", lambda _event: setattr(self, "audio_volume_dragging", True)
+        )
+        self.audio_volume.bind(
+            "<ButtonRelease-1>", lambda _event: setattr(self, "audio_volume_dragging", False)
+        )
+        self.audio_mute_button, self.audio_mute_text_id, self.audio_mute_circle = (
+            self._make_round_audio_button(
+                bottom, "◖×", self._audio_toggle_mute,
+                size=48, font_size=13, pack=False,
+            )
+        )
         self.audio_mute_button.pack(side=tk.LEFT, padx=(4, 16))
-        tk.Label(bottom, text="Speed", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)).pack(side=tk.RIGHT, padx=(12, 4))
+
+        tk.Label(
+            bottom, text="Speed", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)
+        ).pack(side=tk.RIGHT, padx=(12, 4))
         self.audio_speed_var = tk.StringVar(value="1.0×")
         self.audio_speed = ttk.Combobox(
             bottom, textvariable=self.audio_speed_var, state="readonly",
@@ -1357,6 +1450,44 @@ class Reader(tk.Tk):
             panel, text="Not playing", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)
         )
         self.audio_time_label.pack(anchor="center", pady=(10, 0))
+        self._set_audio_mute_icon(False)
+
+    def _make_round_audio_button(self, parent, label, command, size=96,
+                                 font_size=24, pack=True):
+        """Create a real clickable circular transport/mute control on a Tk canvas."""
+        canvas = tk.Canvas(
+            parent, width=size, height=size, bg=APP_BG,
+            highlightthickness=0, bd=0, cursor="hand2", takefocus=True,
+        )
+        inset = 3
+        circle = canvas.create_oval(
+            inset, inset, size - inset, size - inset,
+            fill="#292D32", outline="#3B4048", width=1,
+        )
+        text_id = canvas.create_text(
+            size / 2, size / 2, text=label, fill=DEFAULT_FG,
+            font=(FONT_NAME, font_size, "bold"), justify=tk.CENTER,
+        )
+        canvas.bind("<Enter>", lambda _event: canvas.itemconfigure(circle, fill="#363B42"))
+        canvas.bind("<Leave>", lambda _event: canvas.itemconfigure(circle, fill="#292D32"))
+        canvas.bind("<ButtonPress-1>", lambda _event: canvas.itemconfigure(circle, fill=MINT_DARK))
+        canvas.bind(
+            "<ButtonRelease-1>",
+            lambda _event: (canvas.itemconfigure(circle, fill="#363B42"), command()),
+        )
+        canvas.bind("<Return>", lambda _event: command())
+        canvas.bind("<space>", lambda _event: command())
+        if pack:
+            canvas.pack(side=tk.LEFT, padx=6)
+        return canvas, text_id, circle
+
+    def _set_audio_mute_icon(self, muted):
+        """Keep the mute control's speaker symbol aligned with mpv's actual mute state."""
+        if not hasattr(self, "audio_mute_button"):
+            return
+        self.audio_mute_button.itemconfigure(
+            self.audio_mute_text_id, text="◖×" if muted else "◖))"
+        )
 
     def open_audiobook_dialog(self):
         path = filedialog.askopenfilename(
@@ -1440,44 +1571,96 @@ class Reader(tk.Tk):
             self.audio_cover_label.configure(text="COVER ART\nNOT AVAILABLE", image="")
 
     def _refresh_audio_chapters(self, chapters):
+        """Store human-readable embedded chapter names independently of filenames."""
         self.audio_chapters = chapters or []
         record = audiobook_record(self.state, self.audio_path) if self.audio_path else {}
-        record["chapters"] = [str(ch.get("title") or f"Chapter {i + 1}") for i, ch in enumerate(self.audio_chapters)]
+        record["chapters"] = [
+            audiobook_display_chapter_title(ch.get("title"), index)
+            for index, ch in enumerate(self.audio_chapters)
+        ]
         self._populate_audio_contents()
 
     def _populate_audio_contents(self):
+        """Show an audiobook heading and its chapter titles, never numbered file names."""
         if not hasattr(self, "toc_tree"):
             return
         self.toc_tree.delete(*self.toc_tree.get_children())
         self._toc_items = {}
-        root = self.toc_tree.insert("", tk.END, text="AUDIOBOOKS", open=True)
+        self._audio_toc_entries = []
         records = audiobook_records(self.state)
-        for path, record in records.items():
+        paths = list(records)
+        if self.audio_path and self.audio_path in paths:
+            paths.remove(self.audio_path)
+            paths.insert(0, self.audio_path)
+        else:
+            last_item = last_opened_item_info(self.state)
+            if last_item and last_item["type"] == "audiobook" and last_item["path"] in paths:
+                paths.remove(last_item["path"])
+                paths.insert(0, last_item["path"])
+
+        for book_number, path in enumerate(paths):
+            record = records.get(path)
             if not isinstance(record, dict):
                 continue
-            title = str(record.get("title") or os.path.splitext(os.path.basename(path))[0])
-            book_node = self.toc_tree.insert(root, tk.END, text=title, open=(path == self.audio_path))
+            group_title = "🎧  Audiobook" if book_number == 0 else f"🎧  Audiobook {book_number + 1}"
+            book_node = self.toc_tree.insert("", tk.END, text=group_title, open=True)
             chapters = record.get("chapters", [])
             if path == self.audio_path and self.audio_chapters:
-                chapters = [str(ch.get("title") or f"Chapter {i + 1}") for i, ch in enumerate(self.audio_chapters)]
+                chapters = [
+                    audiobook_display_chapter_title(ch.get("title"), index)
+                    for index, ch in enumerate(self.audio_chapters)
+                ]
+            if not chapters:
+                self.toc_tree.insert(book_node, tk.END, text="No embedded chapters found")
+                continue
             for index, chapter in enumerate(chapters):
-                iid = self.toc_tree.insert(book_node, tk.END, text=str(chapter))
+                title = audiobook_display_chapter_title(chapter, index)
+                iid = self.toc_tree.insert(book_node, tk.END, text=title)
                 self._toc_items[iid] = ("audio", path, index)
+                self._audio_toc_entries.append((iid, title, 1))
         self._fit_audio_sidebar()
 
     def _fit_audio_sidebar(self):
+        """Wrap complete chapter names inside the visible Contents width."""
         try:
+            if not self._audio_toc_entries:
+                ttk.Style(self).configure("Treeview", rowheight=29)
+                return
+            left_width = self.left.winfo_width()
+            if left_width <= 1:
+                left_width = self.sidebar_target_width
+            tree_width = max(170, int(left_width) - 28)
             font = tkfont.Font(root=self, font=("Sans", 10))
-            widths = [font.measure("CONTENTS")]
-            for item in self.toc_tree.get_children():
-                widths.append(font.measure(self.toc_tree.item(item, "text")) + 18)
-                for child in self.toc_tree.get_children(item):
-                    widths.append(font.measure(self.toc_tree.item(child, "text")) + 36)
-            available = max(260, int(self.panes.winfo_width()))
-            target = sidebar_width_for_labels(widths, available, 250, 460, 72)
-            self.toc_tree.column("#0", width=max(165, target - 72), minwidth=160, stretch=True)
-        except (tk.TclError, ValueError):
+            text_width = max(105, tree_width - 58)
+            max_lines = 1
+            for iid, title, depth in self._audio_toc_entries:
+                wrapped = wrap_audio_chapter_title(
+                    title, font, max(90, text_width - (depth * 12))
+                )
+                self.toc_tree.item(iid, text=wrapped)
+                max_lines = max(max_lines, wrapped.count("\n") + 1)
+            line_height = int(font.metrics("linespace"))
+            ttk.Style(self).configure(
+                "Treeview", rowheight=max(34, line_height * max_lines + 12)
+            )
+            self.toc_tree.column(
+                "#0", width=tree_width, minwidth=tree_width, stretch=True
+            )
+        except (tk.TclError, ValueError, TypeError):
             pass
+
+    def _highlight_audio_chapter(self, chapter_index):
+        """Select and reveal the currently playing embedded chapter."""
+        for iid, data in self._toc_items.items():
+            if data and data[0] == "audio" and data[2] == chapter_index:
+                self._setting_toc_selection = True
+                try:
+                    self.toc_tree.selection_set(iid)
+                    self.toc_tree.focus(iid)
+                    self.toc_tree.see(iid)
+                finally:
+                    self._setting_toc_selection = False
+                return
 
     def _audio_chapter_selected(self, _event=None):
         return
@@ -1522,7 +1705,7 @@ class Reader(tk.Tk):
         try:
             status = self.audio_backend.status()
             muted = self.audio_backend.set_mute(not bool(status.get("mute")))
-            self.audio_mute_button.configure(text="Unmute" if muted else "Mute")
+            self._set_audio_mute_icon(muted)
         except AudiobookError as exc:
             messagebox.showerror("Audio problem", str(exc), parent=self)
 
@@ -1569,6 +1752,10 @@ class Reader(tk.Tk):
             chapters = status.get("chapters", [])
             if chapters and chapters != self.audio_chapters:
                 self._refresh_audio_chapters(chapters)
+            volume = status.get("volume")
+            if volume is not None and not self.audio_volume_dragging:
+                self.audio_volume_var.set(max(0.0, min(100.0, float(volume))))
+            self._set_audio_mute_icon(bool(status.get("mute")))
             if duration > 0 and not self.audio_seeking:
                 self.audio_seek.configure(to=duration)
                 self.audio_position_var.set(position)
@@ -1578,8 +1765,11 @@ class Reader(tk.Tk):
             chapter_index = status.get("chapter")
             if isinstance(chapter_index, int) and 0 <= chapter_index < len(self.audio_chapters):
                 self.audio_chapter_title.configure(
-                    text=str(self.audio_chapters[chapter_index].get("title") or f"Chapter {chapter_index + 1}")
+                    text=audiobook_display_chapter_title(
+                        self.audio_chapters[chapter_index].get("title"), chapter_index
+                    )
                 )
+                self._highlight_audio_chapter(chapter_index)
             self._save_audio_position(status)
         except (AudiobookError, OSError, TypeError, ValueError):
             pass
@@ -2071,6 +2261,7 @@ class Reader(tk.Tk):
         self.show_details(first_open=True)
 
     def _populate_toc(self):
+        ttk.Style(self).configure("Treeview", rowheight=29)
         self.toc_tree.delete(*self.toc_tree.get_children())
         self._toc_items = {}
         if not self.book:
