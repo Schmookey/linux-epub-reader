@@ -1415,6 +1415,11 @@ class Reader(tk.Tk):
         self._show_audio_cover(extract_cover_art(path))
         self._populate_audio_contents()
         try:
+            self.audio_backend.set_volume(self.audio_volume_var.get())
+            self.audio_backend.set_speed(1.0)
+        except AudiobookError:
+            pass
+        try:
             position = max(0.0, float(record.get("position", 0.0))) if resume else 0.0
         except (TypeError, ValueError):
             position = 0.0
@@ -1679,6 +1684,7 @@ class Reader(tk.Tk):
         if item and item["type"] == "audiobook":
             path, title = item["path"], item["title"]
             available = os.path.isfile(path)
+            self._populate_audio_contents()
             self.resume_button.configure(
                 text="Resume last audiobook" if available else "Locate last audiobook…",
                 command=self.resume_last_audiobook,
