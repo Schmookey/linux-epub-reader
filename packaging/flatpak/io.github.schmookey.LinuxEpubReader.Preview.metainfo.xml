@@ -8,7 +8,7 @@
   <description>
     <p>Preview build for testing local M4B audiobook playback alongside the stable Linux EPUB Reader installation. Uses a separate application identity and reading-state directory.</p>
     <p>A simple, text-oriented EPUB reader with continuous chapter scrolling, a contents panel, search, bookmarks, saved reading positions, EPUB cover artwork and an illustrated welcome-back panel with a Resume action.</p>
-    <p>The M4B audiobook preview includes a cover-led player, rounded transport controls, working volume and mute controls, playback speed, and readable embedded chapter navigation in the left Contents panel.</p>
+    <p>The M4B audiobook preview includes a cover-led player, rounded transport controls, working volume and mute controls, playback speed, readable embedded chapter navigation, and background loading/status monitoring to keep the interface responsive.</p>
     <p>The app uses Atkinson Hyperlegible with a dark reading surface. It works locally and does not need network access to read books.</p>
     <p>This is not a browser-grade EPUB renderer. Complex publisher layouts, illustrations, embedded media, and Adobe DRM are not supported.</p>
   </description>
@@ -17,5 +17,5 @@
   <url type="bugtracker">https://github.com/Schmookey/linux-epub-reader/issues</url>
   <developer_name>Linux EPUB Reader contributors</developer_name>
   <provides><mediatype>application/epub+zip</mediatype></provides>
-  <releases><release version="0.13.11" date="2026-11-01"/><release version="0.13.10" date="2026-10-31"/><release version="0.13.9" date="2026-10-31"/><release version="0.13.8" date="2026-10-30"/><release version="0.13.7" date="2026-10-27"/></releases>
+  <releases><release version="0.13.12" date="2026-11-01"/><release version="0.13.11" date="2026-11-01"/><release version="0.13.10" date="2026-10-31"/><release version="0.13.9" date="2026-10-31"/><release version="0.13.8" date="2026-10-30"/><release version="0.13.7" date="2026-10-27"/></releases>
 </component>
