@@ -212,17 +212,18 @@ class AudioWorkerTests(unittest.TestCase):
                     ("play", ()), ("pause", ()), ("volume", (55,)),
                     ("mute", (True,)), ("speed", (1.25,)),
                     ("seek", (8,)), ("chapter", (1,)), ("stop", ()),
+                    ("skip", (30,)), ("toggle_mute", ()),
                 ]:
                     worker.submit(action, 4, *args)
 
                 observed = set()
                 deadline = time.monotonic() + 3
-                while len(observed) < 8 and time.monotonic() < deadline:
+                while len(observed) < 10 and time.monotonic() < deadline:
                     event = worker.events.get(timeout=max(0.05, deadline-time.monotonic()))
                     if event["type"] == "status":
                         # Each completed command publishes a status snapshot.
                         observed.add(len(observed))
-                self.assertEqual(len(observed), 8)
+                self.assertEqual(len(observed), 10)
             finally:
                 worker.shutdown()
                 worker.join(timeout=3)
@@ -232,7 +233,8 @@ class AudioWorkerTests(unittest.TestCase):
             self.assertEqual(
                 [name for name, _args in calls if name != "status"],
                 ["load", "volume", "speed", "play", "pause", "volume",
-                 "mute", "speed", "seek", "chapter", "seek", "pause", "close"],
+                 "mute", "speed", "seek", "chapter", "seek", "pause",
+                 "seek", "mute", "close"],
             )
 
     def test_open_error_is_reported_without_stopping_worker(self):
