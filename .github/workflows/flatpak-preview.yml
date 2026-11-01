@@ -3,7 +3,7 @@ name: Standalone Flatpak Preview
 on:
   push:
     paths:
-      - '.github/workflows/flatpak.yml'
+      - '.github/workflows/flatpak-preview.yml'
       - 'io.github.schmookey.LinuxEpubReader.Preview.yml'
       - 'src/**'
       - 'tests/**'
@@ -12,7 +12,7 @@ on:
       - 'LICENSE'
   pull_request:
     paths:
-      - '.github/workflows/flatpak.yml'
+      - '.github/workflows/flatpak-preview.yml'
       - 'io.github.schmookey.LinuxEpubReader.Preview.yml'
       - 'src/**'
       - 'tests/**'
@@ -109,10 +109,10 @@ jobs:
           flatpak run --user --command=python3.15 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
           flatpak run --user --command=python3.15 "$APP_ID" -c 'from PIL import Image; import io; image = Image.new("RGB", (4, 6), "green"); stream = io.BytesIO(); image.save(stream, format="JPEG"); stream.seek(0); decoded = Image.open(stream); decoded.load(); assert decoded.size == (4, 6); print("Pillow JPEG cover decoding passed")'
           flatpak run --user --command=mpv "$APP_ID" --version
-          mkdir -p "$HOME/.local/share/linux-epub-reader"
+          mkdir -p "$HOME/.local/share/linux-epub-reader-preview"
           pulseaudio --start --exit-idle-time=-1 --load=module-null-sink --log-target=stderr
           pactl info
-          cat > "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta" <<'EOF'
+          cat > "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta" <<'EOF'
           ;FFMETADATA1
           [CHAPTER]
           TIMEBASE=1/1
@@ -125,7 +125,7 @@ jobs:
           END=6
           title=Second chapter
           EOF
-          ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -f ffmetadata -i "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta" -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
+          ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -f ffmetadata -i "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta" -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b"
           flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
           import os
           import sys
@@ -133,7 +133,7 @@ jobs:
           sys.path.insert(0, "/app/lib/linux-epub-reader")
           from audiobook_player import MPVBackend
 
-          path = os.path.expanduser("~/.local/share/linux-epub-reader-preview/flatpak-integration.m4b")
+          path = os.path.expanduser("~/.local/share/linux-epub-reader-preview-preview/flatpak-integration.m4b")
           player = MPVBackend(audio_output="pulse", startup_timeout=8)
           try:
               status = player.load(path)
@@ -158,7 +158,7 @@ jobs:
           finally:
               player.close()
           PY
-          rm -f "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b" "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta"
+          rm -f "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b" "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta"
           pulseaudio --kill || true
 
       - name: Save bundle as a workflow artifact
