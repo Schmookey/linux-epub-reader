@@ -31,9 +31,23 @@ BORDER = "#353941"
 MINT_GREEN = "#87CF3E"
 MINT_DARK = "#30451F"
 MUTED_TEXT = "#AEB4BD"
-STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "linux-epub-reader")
+DEFAULT_STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "linux-epub-reader")
+STATE_DIR = os.path.abspath(os.path.expanduser(
+    os.environ.get("LINUX_EPUB_READER_STATE_DIR", DEFAULT_STATE_DIR)
+))
 STATE_FILE = os.path.join(STATE_DIR, "reading_state.json")
-LEGACY_STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "mint-epub-reader")
+DEFAULT_LEGACY_STATE_DIR = os.path.join(
+    os.path.expanduser("~"), ".local", "share", "mint-epub-reader"
+)
+# An alternate preview data directory must never import or modify the stable
+# installation's legacy state. The normal installation keeps its migration.
+LEGACY_STATE_DIR = os.path.abspath(os.path.expanduser(
+    os.environ.get(
+        "LINUX_EPUB_READER_LEGACY_STATE_DIR",
+        DEFAULT_LEGACY_STATE_DIR if STATE_DIR == DEFAULT_STATE_DIR
+        else os.path.join(STATE_DIR, "legacy"),
+    )
+))
 
 def _unique_state_backup_path(path):
     """Choose a backup name without replacing an earlier recovery copy."""
