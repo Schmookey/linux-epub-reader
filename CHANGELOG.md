@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.12-1 — Responsive audiobook loading and playback status
+
+- Move M4B loading, MPV media probing and embedded cover-art extraction off the Tk interface thread.
+- Move recurring MPV status polling to a background monitor and pass immutable snapshots to the interface.
+- Use cached status for progress saving, mute and 30-second seeking so these controls do not trigger multi-property synchronous status reads.
+- Serialize MPV IPC requests across worker and UI threads and coordinate shutdown with active polling.
+- Keep the interface responsive while an audiobook is opening and show a useful error if a file cannot be read.
+- Add regression tests preventing synchronous audiobook loading, status polling and progress reads on the UI thread.
+
+
 ## 0.13.11-1 — Audiobook player visual and navigation refinement
 
 - Match the audiobook screen more closely to the approved cover-led design, with rounded circular transport controls.
