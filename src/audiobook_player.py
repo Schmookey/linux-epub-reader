@@ -395,15 +395,19 @@ class MPVBackend:
         fetched every second. Keeping routine polling small leaves the worker
         free to process button commands promptly.
         """
-        def prop(name):
+        def prop(name, required=False):
             try:
                 return self._request({"command": ["get_property", name]})
             except AudiobookError:
+                if required:
+                    raise
                 return None
 
+        # These two properties are essential to know whether playback is
+        # advancing. Do not silently turn IPC failures into a frozen 0:00 UI.
         snapshot = {
-            "time_pos": prop("time-pos"),
-            "paused": prop("pause"),
+            "time_pos": prop("time-pos", required=True),
+            "paused": prop("pause", required=True),
         }
         if include_details:
             snapshot.update({
