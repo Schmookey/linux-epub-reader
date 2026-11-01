@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Linux EPUB Reader project contributors
 # SPDX-License-Identifier: GPL-3.0-only
-"""Linux EPUB Reader v0.13.11 — offline-first, dark EPUB reader with Linux Mint accents.
+"""Linux EPUB Reader v0.13.12 — offline-first, dark EPUB reader with Linux Mint accents.
 
 Uses only Python's standard library and Tkinter. This is a text-oriented reader,
 not a full browser-grade EPUB renderer; complex CSS, illustrations and embedded
 media are not rendered. Chapter page counts are estimates unless publisher page
 markers are supplied.
 """
-import os, re, sys, json, zipfile, posixpath, hashlib, html, io, base64, shutil
+import os, re, sys, json, zipfile, posixpath, hashlib, html, io, base64, shutil, queue, threading
 from urllib.parse import unquote
 import tkinter as tk
 import tkinter.font as tkfont
@@ -25,7 +25,7 @@ except ImportError:
     extract_cover_art = lambda path: None
 
 APP_NAME = "Linux EPUB Reader"
-APP_VERSION = "0.13.11"
+APP_VERSION = "0.13.12"
 APP_BG = "#17191C"
 PANEL_BG = "#22252A"
 BORDER = "#353941"
@@ -807,6 +807,15 @@ class Reader(tk.Tk):
         self.audio_seeking = False
         self.audio_volume_dragging = False
         self._audio_toc_entries = []
+        self._audio_load_queue = queue.Queue()
+        self._audio_load_token = 0
+        self._audio_load_cancel_event = None
+        self._audio_load_poll_id = None
+        self._audio_load_thread = None
+        self.audio_loading = False
+        self._audio_close_requested = False
+        self._last_audio_status = None
+        self._pending_audio_chapter_index = None
         self.index = 0
         self.font_size = 11
         self.line_spacing = 1.5
@@ -853,6 +862,7 @@ class Reader(tk.Tk):
         self.bind("<F11>", lambda _e: self.toggle_fullscreen())
         self.bind("<Escape>", lambda _e: self.exit_fullscreen())
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self._audio_load_poll_id = self.after(100, self._poll_audio_load_queue)
 
     def _load_state(self):
         state, backup_path, writes_blocked, message = load_state_file(STATE_FILE)
@@ -1497,34 +1507,138 @@ class Reader(tk.Tk):
         if path:
             self.open_audiobook(path)
 
-    def open_audiobook(self, path, resume=False):
-        """Load a local M4B paused, restoring its saved listening position."""
+    def open_audiobook(self, path, resume=False, chapter_index=None):
+        """Start loading a local M4B on a worker so Tk's interface stays responsive."""
         if self.audio_backend is None:
-            messagebox.showerror("Audiobooks unavailable", "The audiobook playback engine is not available in this build.", parent=self)
+            messagebox.showerror(
+                "Audiobooks unavailable",
+                "The audiobook playback engine is not available in this build.",
+                parent=self,
+            )
+            return
+        if self.audio_loading:
+            messagebox.showinfo(
+                "Audiobook opening",
+                "An audiobook is already being opened. Please wait for it to finish.",
+                parent=self,
+            )
             return
         path = os.path.abspath(os.path.expanduser(path))
         if os.path.splitext(path)[1].lower() != ".m4b" or not os.path.isfile(path):
-            messagebox.showerror("Cannot open audiobook", "Please choose an existing local M4B file.", parent=self)
+            messagebox.showerror(
+                "Cannot open audiobook",
+                "Please choose an existing local M4B file.",
+                parent=self,
+            )
             return
+
         if self.audio_tick_id:
             try:
                 self.after_cancel(self.audio_tick_id)
             except tk.TclError:
                 pass
             self.audio_tick_id = None
-        self._save_audio_position()
+
+        # Save the last UI-cached status; do not make a synchronous MPV IPC call
+        # immediately before starting the worker.
+        if self.audio_path and self._last_audio_status:
+            self._save_audio_position(self._last_audio_status)
+
+        record = audiobook_record(self.state, path) if resume else {}
+        try:
+            restore_position = (
+                max(0.0, float(record.get("position", 0.0)))
+                if resume and chapter_index is None else 0.0
+            )
+        except (TypeError, ValueError, OverflowError):
+            restore_position = 0.0
+
+        self._audio_load_token += 1
+        token = self._audio_load_token
+        cancel_event = threading.Event()
+        self._audio_load_cancel_event = cancel_event
+        self._pending_audio_chapter_index = chapter_index
+        self.audio_loading = True
+        self.audio_time_label.configure(text="Opening audiobook…")
+        self.status.configure(text=f"Opening audiobook: {os.path.basename(path)}")
+        worker = threading.Thread(
+            target=self._load_audiobook_worker,
+            args=(token, path, restore_position, chapter_index, cancel_event),
+            name="M4B loader",
+            daemon=True,
+        )
+        self._audio_load_thread = worker
+        worker.start()
+
+    def _load_audiobook_worker(self, token, path, restore_position,
+                               chapter_index, cancel_event):
+        """Perform MPV probing, seeking and cover-file I/O outside the Tk thread."""
         try:
             status = self.audio_backend.load(path)
-        except (AudiobookError, OSError) as exc:
-            messagebox.showerror("Could not open audiobook", str(exc), parent=self)
-            if self.audio_is_active:
-                self._audio_update_tick()
-            return
+            if chapter_index is not None:
+                self.audio_backend.select_chapter(chapter_index)
+            elif restore_position > 0:
+                self.audio_backend.seek(restore_position)
+            # Refresh metadata after positioning so the UI starts at the right chapter.
+            status = self.audio_backend.status()
+            cover_bytes = extract_cover_art(path)
+            if cancel_event.is_set():
+                self.audio_backend.close()
+                return
+            self._audio_load_queue.put(
+                (token, path, status, cover_bytes, None)
+            )
+        except Exception as exc:
+            if cancel_event.is_set():
+                try:
+                    self.audio_backend.close()
+                except Exception:
+                    pass
+                return
+            detail = f"{type(exc).__name__}: {exc}"
+            self._audio_load_queue.put(
+                (token, path, None, None, detail)
+            )
+
+    def _poll_audio_load_queue(self):
+        """Apply worker results on Tk's main thread; never touch widgets in the worker."""
+        try:
+            while True:
+                token, path, status, cover_bytes, error = self._audio_load_queue.get_nowait()
+                if token != self._audio_load_token or self._audio_close_requested:
+                    continue
+                self.audio_loading = False
+                self._audio_load_cancel_event = None
+                self._audio_load_thread = None
+                if error:
+                    self.audio_time_label.configure(text="Audiobook could not be opened")
+                    self.status.configure(text="Audiobook could not be opened.")
+                    messagebox.showerror(
+                        "Could not open audiobook",
+                        f"Linux EPUB Reader could not open this M4B file.\n\n{error}\n\n"
+                        "The application should remain responsive. Check that the file is "
+                        "readable and is not DRM-protected.",
+                        parent=self,
+                    )
+                    if self.audio_is_active:
+                        self._audio_update_tick()
+                    continue
+                self._finish_audiobook_open(path, status, cover_bytes)
+        except queue.Empty:
+            pass
+        if not self._audio_close_requested:
+            self._audio_load_poll_id = self.after(100, self._poll_audio_load_queue)
+
+    def _finish_audiobook_open(self, path, status, cover_bytes):
+        """Update the player widgets after the background load has succeeded."""
         self.audio_path = path
         self.audio_title = os.path.splitext(os.path.basename(path))[0]
         self.audio_is_active = True
+        self._last_audio_status = status or {}
         record = audiobook_record(self.state, path)
-        self.state["last_opened_item"] = {"type": "audiobook", "path": path, "title": self.audio_title}
+        self.state["last_opened_item"] = {
+            "type": "audiobook", "path": path, "title": self.audio_title
+        }
         self.resume_button.configure(
             text="Resume last audiobook", command=self.resume_last_audiobook,
             state=tk.NORMAL,
@@ -1533,34 +1647,32 @@ class Reader(tk.Tk):
             self._save_state()
         except OSError:
             pass
+        metadata = (status or {}).get("metadata", {}) or {}
+        self.audio_title = str(metadata.get("title") or self.audio_title)
+        record["title"] = self.audio_title
         self.title(f"{self.audio_title} — {APP_NAME} v{APP_VERSION}")
         self.book_label.configure(text=self.audio_title)
         self.heading.pack_forget()
         self.text_frame.pack_forget()
         self.welcome_view.pack_forget()
         self.audio_screen.pack(fill=tk.BOTH, expand=True)
-        self._refresh_audio_chapters(status.get("chapters", []))
-        metadata = status.get("metadata", {}) or {}
-        self.audio_title = str(metadata.get("title") or self.audio_title)
-        record["title"] = self.audio_title
-        self._show_audio_cover(extract_cover_art(path))
+        self._refresh_audio_chapters((status or {}).get("chapters", []))
+        self._show_audio_cover(cover_bytes)
         self._populate_audio_contents()
-        try:
-            self.audio_backend.set_volume(self.audio_volume_var.get())
-            self.audio_backend.set_speed(1.0)
-        except AudiobookError:
-            pass
-        try:
-            position = max(0.0, float(record.get("position", 0.0))) if resume else 0.0
-        except (TypeError, ValueError):
-            position = 0.0
-        if position:
+
+        volume = (status or {}).get("volume")
+        if volume is not None:
             try:
-                self.audio_backend.seek(position)
-            except AudiobookError:
+                self.audio_volume_var.set(max(0.0, min(100.0, float(volume))))
+            except (TypeError, ValueError, OverflowError):
                 pass
-        self._audio_update_tick()
-        self._save_audio_position()
+        speed = (status or {}).get("speed")
+        if speed is not None:
+            try:
+                self.audio_speed_var.set(f"{float(speed):g}×")
+            except (TypeError, ValueError, OverflowError):
+                pass
+        self._audio_update_tick(status)
 
     def _show_audio_cover(self, cover_bytes):
         self.audio_cover_photo = self._create_cover_photo(cover_bytes, (380, 380)) if cover_bytes else None
@@ -1667,7 +1779,8 @@ class Reader(tk.Tk):
 
     def _audio_select_chapter(self, path, index):
         if path != self.audio_path:
-            self.open_audiobook(path, resume=True)
+            self.open_audiobook(path, resume=True, chapter_index=index)
+            return
         try:
             self.audio_backend.select_chapter(index)
             self._save_audio_position()
@@ -1741,11 +1854,12 @@ class Reader(tk.Tk):
                 messagebox.showerror("Seek problem", str(exc), parent=self)
         self.audio_seeking = False
 
-    def _audio_update_tick(self):
+    def _audio_update_tick(self, initial_status=None):
         if not self.audio_is_active or not self.audio_backend:
             return
         try:
-            status = self.audio_backend.status()
+            status = initial_status or self.audio_backend.status()
+            self._last_audio_status = status
             position = float(status.get("time_pos") or 0)
             duration = float(status.get("duration") or 0)
             paused = bool(status.get("paused", True))
@@ -2559,15 +2673,42 @@ class Reader(tk.Tk):
         ttk.Button(buttons, text="Delete selected", command=remove_mark).pack(side=tk.LEFT, padx=6)
 
     def on_close(self):
-        if self.book: self._update_progress()
-        self._save_audio_position()
+        if self.audio_loading:
+            # Let the worker close MPV when its bounded load/probe operation returns.
+            self._audio_close_requested = True
+            if self._audio_load_cancel_event:
+                self._audio_load_cancel_event.set()
+            if self._audio_load_poll_id:
+                try:
+                    self.after_cancel(self._audio_load_poll_id)
+                except tk.TclError:
+                    pass
+            try:
+                self._save_state()
+            except OSError:
+                pass
+            self.destroy()
+            return
+        if self.book:
+            self._update_progress()
+        if self.audio_path and self._last_audio_status:
+            self._save_audio_position(self._last_audio_status)
         if self.audio_tick_id:
-            try: self.after_cancel(self.audio_tick_id)
-            except tk.TclError: pass
+            try:
+                self.after_cancel(self.audio_tick_id)
+            except tk.TclError:
+                pass
+        if self._audio_load_poll_id:
+            try:
+                self.after_cancel(self._audio_load_poll_id)
+            except tk.TclError:
+                pass
         if self.audio_backend:
             self.audio_backend.close()
-        try: self._save_state()
-        except OSError: pass
+        try:
+            self._save_state()
+        except OSError:
+            pass
         self.destroy()
 
 
