@@ -112,9 +112,53 @@ jobs:
           mkdir -p "$HOME/.local/share/linux-epub-reader"
           pulseaudio --start --exit-idle-time=-1 --load=module-null-sink --log-target=stderr
           pactl info
-          ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
-          flatpak run --user --command=python3.15 "$APP_ID" -c 'import os, sys; sys.path.insert(0, "/app/lib/linux-epub-reader"); from audiobook_player import MPVBackend; path=os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b"); player=MPVBackend(audio_output="pulse", startup_timeout=8); status=player.load(path); assert float(status["duration"]) > 5; assert status["paused"]; player.seek(2); assert player.play_pause(); player.pause(); assert player.status()["paused"]; player.close(); print("Flatpak M4B playback through PulseAudio socket, pause, seek and IPC passed")'
-          rm -f "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
+          cat > "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta" <<'EOF'
+          ;FFMETADATA1
+          [CHAPTER]
+          TIMEBASE=1/1
+          START=0
+          END=3
+          title=Opening
+          [CHAPTER]
+          TIMEBASE=1/1
+          START=3
+          END=6
+          title=Second chapter
+          EOF
+          ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -f ffmetadata -i "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta" -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b"
+          flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
+          import os
+          import sys
+          import time
+          sys.path.insert(0, "/app/lib/linux-epub-reader")
+          from audiobook_player import MPVBackend
+
+          path = os.path.expanduser("~/.local/share/linux-epub-reader/flatpak-integration.m4b")
+          player = MPVBackend(audio_output="pulse", startup_timeout=8)
+          try:
+              status = player.load(path)
+              assert float(status["duration"]) > 5, status
+              assert status["paused"], status
+              expected = ["Opening", "Second chapter"]
+              actual = [chapter["title"] for chapter in status["chapters"]]
+              assert actual == expected, actual
+              player.select_chapter(1)
+              chapter_status = player.status()
+              assert chapter_status["chapter"] == 1, chapter_status
+              player.seek(4)
+              assert float(player.status()["time_pos"] or 0) >= 3.5
+              assert player.play_pause()
+              time.sleep(0.25)
+              player.pause()
+              assert player.status()["paused"]
+              replacement = player.load(path)
+              assert replacement["paused"], replacement
+              assert [chapter["title"] for chapter in replacement["chapters"]] == expected
+              print("Flatpak M4B playback, embedded chapters, chapter selection, pause, seek and IPC passed")
+          finally:
+              player.close()
+          PY
+          rm -f "$HOME/.local/share/linux-epub-reader/flatpak-integration.m4b" "$HOME/.local/share/linux-epub-reader/flatpak-integration.ffmeta"
           pulseaudio --kill || true
 
       - name: Save bundle as a workflow artifact
