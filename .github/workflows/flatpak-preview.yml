@@ -132,7 +132,7 @@ jobs:
           import sys
           import time
           sys.path.insert(0, "/app/lib/linux-epub-reader")
-          from audiobook_player import MPVBackend
+          from audiobook_player import AudioWorker, MPVBackend
 
           path = os.path.expanduser("~/.local/share/linux-epub-reader-preview/flatpak-integration.m4b")
           player = MPVBackend(audio_output="pulse", startup_timeout=8)
@@ -155,9 +155,61 @@ jobs:
               replacement = player.load(path)
               assert replacement["paused"], replacement
               assert [chapter["title"] for chapter in replacement["chapters"]] == expected
-              print("Flatpak M4B playback, embedded chapters, chapter selection, pause, seek and IPC passed")
+              print("Direct MPV M4B playback, chapters, pause, seek and IPC passed")
           finally:
               player.close()
+
+          # Exercise the exact worker path used by the Tk GUI, not merely MPV
+          # directly. This catches a mismatch between backend and worker APIs.
+          worker = AudioWorker(
+              backend_factory=lambda: MPVBackend(audio_output="pulse", startup_timeout=8),
+              poll_interval=0.25,
+          )
+          try:
+              assert worker.submit("open", 21, path, 0.0, None, 70.0, 1.0)
+              loaded = worker.events.get(timeout=10)
+              assert loaded["type"] == "loaded", loaded
+              assert loaded["token"] == 21, loaded
+              assert float(loaded["status"]["duration"]) > 5, loaded
+              assert worker.submit("play", 21)
+              deadline = time.monotonic() + 5
+              advanced = False
+              while time.monotonic() < deadline:
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "status":
+                      if float((event.get("status") or {}).get("time_pos") or 0) > 0.2:
+                          advanced = True
+                          break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert advanced, "Worker playback position did not advance after Play"
+              assert worker.submit("pause", 21)
+              deadline = time.monotonic() + 3
+              paused = False
+              while time.monotonic() < deadline:
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "status" and (event.get("status") or {}).get("paused"):
+                      paused = True
+                      break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert paused, "Worker did not report paused after Pause"
+              assert worker.submit("skip", 21, 1.0)
+              assert worker.submit("toggle_mute", 21)
+              deadline = time.monotonic() + 3
+              completed = set()
+              while time.monotonic() < deadline and not {"skip", "toggle_mute"}.issubset(completed):
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "command_completed":
+                      completed.add(event.get("action"))
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert {"skip", "toggle_mute"}.issubset(completed), completed
+              print("Flatpak M4B playback through AudioWorker, Play, Pause, Skip, Mute and live status passed")
+          finally:
+              worker.shutdown()
+              worker.join(timeout=5)
+              assert not worker.is_alive, "AudioWorker did not shut down"
           PY
           rm -f "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b" "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta"
           pulseaudio --kill || true
