@@ -5,6 +5,7 @@
 - Replace the separate audiobook loading and status-monitor threads with one dedicated audio worker that owns MPV for its entire lifetime.
 - Queue opening, playback, pause, seek, chapter, volume, mute and speed operations through the same worker; status polling is performed by that worker between commands.
 - Keep all Tk widget updates on the interface thread and show worker errors without blocking the reader.
+- Preserve the bounded MPV diagnostic log tail locally when an audiobook fails to open, for targeted troubleshooting.
 - Add tests verifying that all MPV backend calls run on one thread and that load errors are reported while the worker remains responsive.
 
 
