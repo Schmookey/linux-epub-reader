@@ -571,9 +571,13 @@ class AudioWorker:
             self._backend.seek(position)
             self._last_status["time_pos"] = position
         elif action == "skip":
-            current = max(0.0, float(self._last_status.get("time_pos") or 0))
+            # Read the current position on the owner thread immediately before
+            # applying the relative skip, rather than using a stale GUI snapshot.
+            live = self._backend.status(include_details=False)
+            current = max(0.0, float(live.get("time_pos") or 0))
             position = max(0.0, current + float(args[0]))
             self._backend.seek(position)
+            self._last_status.update(live)
             self._last_status["time_pos"] = position
         elif action == "chapter":
             chapter_index = int(args[0])
