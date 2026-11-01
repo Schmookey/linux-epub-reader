@@ -241,6 +241,8 @@ class AudioWorkerTests(unittest.TestCase):
         class BrokenBackend:
             def load(self, _path):
                 raise audio.AudiobookError("test load failure")
+            def diagnostics(self):
+                return "mock MPV decoder diagnostic"
             def close(self):
                 pass
 
@@ -256,6 +258,7 @@ class AudioWorkerTests(unittest.TestCase):
                 self.assertEqual(event["type"], "error")
                 self.assertEqual(event["action"], "open")
                 self.assertIn("test load failure", event["error"])
+                self.assertIn("mock MPV decoder diagnostic", event["error"])
                 self.assertTrue(worker.is_alive)
             finally:
                 worker.shutdown()
