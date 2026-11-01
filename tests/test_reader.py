@@ -478,6 +478,24 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
             method.index("self.toolbar.pack("),
         )
 
+    def test_audiobook_open_runs_in_a_worker_thread(self):
+        method = self._method_source("open_audiobook", "_load_audiobook_worker")
+        self.assertIn("threading.Thread(", method)
+        self.assertIn("worker.start()", method)
+        self.assertNotIn("self.audio_backend.load(path)", method)
+
+    def test_audiobook_status_polling_runs_in_a_worker_thread(self):
+        method = self._method_source("_audio_update_tick", "_save_audio_position")
+        self.assertNotIn("self.audio_backend.status()", method)
+        monitor = self._method_source("_start_audio_status_monitor", "_stop_audio_status_monitor")
+        self.assertIn("threading.Thread(", monitor)
+        self.assertIn("self.audio_backend.status()", monitor)
+
+    def test_audio_progress_saving_uses_a_cached_status_snapshot(self):
+        method = self._method_source("_save_audio_position", "_audio_stop")
+        self.assertIn("self._last_audio_status", method)
+        self.assertNotIn("self.audio_backend.status()", method)
+
 
 class AudiobookDisplayTitleTests(unittest.TestCase):
     def test_numbered_file_and_track_names_become_chapter_labels(self):
@@ -508,7 +526,7 @@ class AudiobookDisplayTitleTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.11")
+        self.assertEqual(reader.APP_VERSION, "0.13.12")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
