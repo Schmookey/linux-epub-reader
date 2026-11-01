@@ -1590,10 +1590,21 @@ class Reader(tk.Tk):
                         self.audio_chapters = []
                         self.audio_time_label.configure(text="Audiobook could not be opened")
                         self.status.configure(text="Audiobook could not be opened.")
+                        error_detail = str(event.get("error", "Unknown playback error"))
+                        diagnostic_path = os.path.join(STATE_DIR, "last-audiobook-error.log")
+                        try:
+                            os.makedirs(STATE_DIR, exist_ok=True)
+                            with open(diagnostic_path, "w", encoding="utf-8") as log_file:
+                                log_file.write(error_detail + "\\n")
+                            diagnostic_note = (
+                                f"\\n\\nDiagnostic details saved to:\\n{diagnostic_path}"
+                            )
+                        except OSError:
+                            diagnostic_note = ""
                         messagebox.showerror(
                             "Could not open audiobook",
                             "Linux EPUB Reader could not open this M4B file.\\n\\n"
-                            f"{event.get('error', 'Unknown playback error')}\\n\\n"
+                            f"{error_detail[:3000]}{diagnostic_note}\\n\\n"
                             "The application should remain responsive. Check that the file "
                             "is readable and is not DRM-protected.",
                             parent=self,
