@@ -490,7 +490,8 @@ class AudioWorker:
         event.update(values)
         self.events.put(event)
 
-    def _open(self, token, path, restore_position=0.0, chapter_index=None):
+    def _open(self, token, path, restore_position=0.0, chapter_index=None,
+              volume=80.0, speed=1.0):
         if self._backend is None:
             self._backend = self._backend_factory()
         try:
@@ -499,6 +500,9 @@ class AudioWorker:
                 self._backend.select_chapter(chapter_index)
             elif restore_position and float(restore_position) > 0:
                 self._backend.seek(float(restore_position))
+            # Preserve the player's current controls when switching audiobooks.
+            self._backend.set_volume(volume)
+            self._backend.set_speed(speed)
             # Take the initial snapshot after restoring the requested position.
             status = self._backend.status()
             cover_bytes = extract_cover_art(path)
@@ -526,8 +530,10 @@ class AudioWorker:
 
     def _execute(self, action, token, args):
         if action == "open":
-            path, restore_position, chapter_index = args
-            self._open(token, path, restore_position, chapter_index)
+            path, restore_position, chapter_index, *settings = args
+            volume = settings[0] if len(settings) > 0 else 80.0
+            speed = settings[1] if len(settings) > 1 else 1.0
+            self._open(token, path, restore_position, chapter_index, volume, speed)
             return
         if self._backend is None or not self._active_path:
             raise AudiobookError("Open an audiobook before using the playback controls.")
