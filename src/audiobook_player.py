@@ -230,6 +230,10 @@ class MPVBackend:
                 chunks.append(data.decode("utf-8", errors="replace").strip())
         return "\n".join(chunk for chunk in chunks if chunk)
 
+    def diagnostics(self):
+        """Return the bounded MPV log tail before close removes its private files."""
+        return self._read_startup_diagnostics()
+
     def _connect_ipc(self):
         """Connect once and retain the private mpv IPC stream for this session."""
         if self._ipc_socket is not None:
@@ -498,14 +502,22 @@ class AudioWorker:
             # Take the initial snapshot after restoring the requested position.
             status = self._backend.status()
             cover_bytes = extract_cover_art(path)
-        except Exception:
+        except Exception as exc:
             self._active_path = None
+            diagnostic = ""
+            try:
+                diagnostic = self._backend.diagnostics()
+            except Exception:
+                pass
             try:
                 self._backend.close()
             except Exception:
                 pass
             self._backend = None
-            raise
+            detail = f"{type(exc).__name__}: {exc}"
+            if diagnostic:
+                detail += "\\n\\nMPV diagnostics:\\n" + diagnostic
+            raise AudiobookError(detail) from exc
         self._active_path = path
         self._active_token = token
         self._emit(
