@@ -772,11 +772,7 @@ class Reader(tk.Tk):
         self._welcome_cover_photo = None
         self._build_ui()
         self._refresh_resume_ui()
-        last_item = self.state.get("last_opened_item", {})
-        if isinstance(last_item, dict) and last_item.get("type") == "audiobook":
-            saved_audio = last_item.get("path", "")
-            if saved_audio and os.path.isfile(saved_audio):
-                self.after(250, lambda p=saved_audio: self.open_audiobook(p, resume=True))
+        # Audiobooks never start automatically: the welcome panel asks before resuming.
         if self._state_recovery_message:
             messagebox.showwarning(
                 "Saved reading data needs attention",
@@ -1285,50 +1281,81 @@ class Reader(tk.Tk):
             self._setting_toc_selection = False
 
     def _build_audiobook_screen(self):
-        """Create the integrated, single-window audiobook player."""
-        panel = tk.Frame(self.audio_screen, bg=PANEL_BG, highlightthickness=1, highlightbackground=BORDER)
+        """Build the cover-led audiobook player shown in the approved design."""
+        panel = tk.Frame(self.audio_screen, bg=APP_BG, bd=0)
         panel.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-        tk.Label(panel, text="AUDIOBOOK", bg=PANEL_BG, fg=MINT_GREEN,
-                 font=("Sans", 9, "bold")).pack(anchor="w", padx=24, pady=(22, 5))
-        self.audio_title_label = tk.Label(
-            panel, text="No audiobook selected", bg=PANEL_BG, fg=DEFAULT_FG,
-            font=(FONT_NAME, 19, "bold"), justify=tk.LEFT, anchor="w", wraplength=760,
+        self.audio_cover_photo = None
+        self.audio_cover_box = tk.Frame(
+            panel, bg="#090A0B", highlightthickness=1, highlightbackground=BORDER,
+            width=340, height=340,
         )
-        self.audio_title_label.pack(fill=tk.X, padx=24)
-        self.audio_path_label = tk.Label(
-            panel, text="Choose a DRM-free M4B file stored on this computer.",
-            bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 9), anchor="w",
+        self.audio_cover_box.pack(pady=(8, 12))
+        self.audio_cover_box.pack_propagate(False)
+        self.audio_cover_label = tk.Label(
+            self.audio_cover_box, text="AUDIOBOOK", bg="#090A0B",
+            fg=MUTED_TEXT, font=("Sans", 18, "bold"),
         )
-        self.audio_path_label.pack(fill=tk.X, padx=24, pady=(5, 18))
-        self.audio_chapter_list = tk.Listbox(
-            panel, bg=APP_BG, fg=DEFAULT_FG, selectbackground=MINT_DARK,
-            selectforeground="#FFFFFF", relief=tk.FLAT, highlightthickness=0,
-            font=(FONT_NAME, 10), height=9,
+        self.audio_cover_label.pack(fill=tk.BOTH, expand=True)
+        self.audio_chapter_title = tk.Label(
+            panel, text="Choose a chapter", bg=APP_BG, fg=DEFAULT_FG,
+            font=(FONT_NAME, 16, "bold"), wraplength=760, justify=tk.CENTER,
         )
-        self.audio_chapter_list.pack(fill=tk.BOTH, expand=True, padx=24, pady=(0, 12))
-        self.audio_chapter_list.bind("<Double-Button-1>", self._audio_chapter_selected)
+        self.audio_chapter_title.pack(fill=tk.X, pady=(0, 16))
+        controls = tk.Frame(panel, bg=APP_BG)
+        controls.pack(pady=(0, 18))
+        button_style = {"bg": "#292D32", "fg": DEFAULT_FG, "activebackground": MINT_DARK,
+                        "activeforeground": "#FFFFFF", "relief": tk.FLAT,
+                        "bd": 0, "font": ("Sans", 19, "bold"), "width": 4, "height": 2,
+                        "cursor": "hand2"}
+        tk.Button(controls, text="⏪", command=lambda: self._audio_skip(-30), **button_style).pack(side=tk.LEFT, padx=6)
+        self.audio_pause_button = tk.Button(
+            controls, text="Ⅱ", command=self._audio_pause, **button_style
+        )
+        self.audio_pause_button.pack(side=tk.LEFT, padx=6)
+        self.audio_play_button = tk.Button(
+            controls, text="▶", command=self._audio_play, **button_style
+        )
+        self.audio_play_button.pack(side=tk.LEFT, padx=6)
+        tk.Button(controls, text="■", command=self._audio_stop, **button_style).pack(side=tk.LEFT, padx=6)
+        tk.Button(controls, text="⏩", command=lambda: self._audio_skip(30), **button_style).pack(side=tk.LEFT, padx=6)
+        seek_row = tk.Frame(panel, bg=APP_BG)
+        seek_row.pack(fill=tk.X, padx=18)
+        self.audio_elapsed_label = tk.Label(seek_row, text="0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9))
+        self.audio_elapsed_label.pack(side=tk.LEFT)
         self.audio_position_var = tk.DoubleVar(value=0.0)
         self.audio_seek = ttk.Scale(
-            panel, from_=0, to=1, orient=tk.HORIZONTAL,
+            seek_row, from_=0, to=1, orient=tk.HORIZONTAL,
             variable=self.audio_position_var, command=self._audio_seek_preview,
         )
-        self.audio_seek.pack(fill=tk.X, padx=24)
+        self.audio_seek.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
         self.audio_seek.bind("<ButtonPress-1>", self._audio_seek_start)
         self.audio_seek.bind("<ButtonRelease-1>", self._audio_seek_commit)
-        self.audio_time_label = tk.Label(
-            panel, text="0:00 elapsed  ·  0:00 remaining", bg=PANEL_BG,
-            fg=MUTED_TEXT, font=("Sans", 9),
+        self.audio_remaining_label = tk.Label(seek_row, text="-0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9))
+        self.audio_remaining_label.pack(side=tk.RIGHT)
+        bottom = tk.Frame(panel, bg=APP_BG)
+        bottom.pack(fill=tk.X, padx=22, pady=(24, 4))
+        self.audio_volume_var = tk.DoubleVar(value=80)
+        tk.Label(bottom, text="◖", bg=APP_BG, fg=DEFAULT_FG, font=("Sans", 16)).pack(side=tk.LEFT)
+        self.audio_volume = ttk.Scale(
+            bottom, from_=0, to=100, variable=self.audio_volume_var,
+            command=self._audio_set_volume, length=180,
         )
-        self.audio_time_label.pack(anchor="e", padx=24, pady=(3, 14))
-        controls = tk.Frame(panel, bg=PANEL_BG)
-        controls.pack(fill=tk.X, padx=24, pady=(0, 22))
-        ttk.Button(controls, text="Open M4B…", command=self.open_audiobook_dialog).pack(side=tk.LEFT)
-        ttk.Button(controls, text="− 30 sec", command=lambda: self._audio_skip(-30)).pack(side=tk.LEFT, padx=(12, 4))
-        self.audio_play_button = ttk.Button(controls, text="Play", command=self._audio_play_pause)
-        self.audio_play_button.pack(side=tk.LEFT, padx=4)
-        ttk.Button(controls, text="+ 30 sec", command=lambda: self._audio_skip(30)).pack(side=tk.LEFT, padx=4)
-        ttk.Button(controls, text="Stop", command=self._audio_stop).pack(side=tk.LEFT, padx=4)
-        ttk.Button(controls, text="Back to reader", command=self.show_reader_screen).pack(side=tk.RIGHT)
+        self.audio_volume.pack(side=tk.LEFT, padx=8)
+        self.audio_mute_button = ttk.Button(bottom, text="Mute", command=self._audio_toggle_mute)
+        self.audio_mute_button.pack(side=tk.LEFT, padx=(4, 16))
+        tk.Label(bottom, text="Speed", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)).pack(side=tk.RIGHT, padx=(12, 4))
+        self.audio_speed_var = tk.StringVar(value="1.0×")
+        self.audio_speed = ttk.Combobox(
+            bottom, textvariable=self.audio_speed_var, state="readonly",
+            values=("0.5×", "0.75×", "1.0×", "1.25×", "1.5×", "1.75×", "2.0×"),
+            width=6,
+        )
+        self.audio_speed.pack(side=tk.RIGHT)
+        self.audio_speed.bind("<<ComboboxSelected>>", self._audio_set_speed)
+        self.audio_time_label = tk.Label(
+            panel, text="Not playing", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)
+        )
+        self.audio_time_label.pack(anchor="center", pady=(10, 0))
 
     def open_audiobook_dialog(self):
         path = filedialog.askopenfilename(
@@ -1383,6 +1410,13 @@ class Reader(tk.Tk):
         self.audio_title_label.configure(text=self.audio_title)
         self.audio_path_label.configure(text=path)
         self._refresh_audio_chapters(status.get("chapters", []))
+        metadata = status.get("metadata", {}) or {}
+        self.audio_title = str(metadata.get("title") or self.audio_title)
+        record["title"] = self.audio_title
+        self.audio_title_label.configure(text=self.audio_title)
+        self.audio_path_label.configure(text=path)
+        self._show_audio_cover(extract_cover_art(path))
+        self._populate_audio_contents()
         try:
             position = max(0.0, float(record.get("position", 0.0))) if resume else 0.0
         except (TypeError, ValueError):
@@ -1394,34 +1428,110 @@ class Reader(tk.Tk):
                 pass
         self.audio_play_button.configure(text="Play")
         self._audio_update_tick()
+        self._save_audio_position()
+
+    def _show_audio_cover(self, cover_bytes):
+        self.audio_cover_photo = self._create_cover_photo(cover_bytes, (340, 340)) if cover_bytes else None
+        self.audio_cover_label.configure(image="", text="")
+        if self.audio_cover_photo is not None:
+            self.audio_cover_label.configure(image=self.audio_cover_photo)
+        else:
+            self.audio_cover_label.configure(text="COVER ART\nNOT AVAILABLE", image="")
 
     def _refresh_audio_chapters(self, chapters):
         self.audio_chapters = chapters or []
-        self.audio_chapter_list.delete(0, tk.END)
-        for index, chapter in enumerate(self.audio_chapters):
-            self.audio_chapter_list.insert(tk.END, f"{index + 1:02d}  {chapter.get('title', 'Chapter')}")
-        if self.audio_chapters:
-            self.audio_chapter_list.selection_clear(0, tk.END)
+        record = audiobook_record(self.state, self.audio_path) if self.audio_path else {}
+        record["chapters"] = [str(ch.get("title") or f"Chapter {i + 1}") for i, ch in enumerate(self.audio_chapters)]
+        self._populate_audio_contents()
+
+    def _populate_audio_contents(self):
+        if not hasattr(self, "toc_tree"):
+            return
+        self.toc_tree.delete(*self.toc_tree.get_children())
+        self._toc_items = {}
+        root = self.toc_tree.insert("", tk.END, text="AUDIOBOOKS", open=True)
+        records = audiobook_records(self.state)
+        for path, record in records.items():
+            if not isinstance(record, dict):
+                continue
+            title = str(record.get("title") or os.path.splitext(os.path.basename(path))[0])
+            book_node = self.toc_tree.insert(root, tk.END, text=title, open=(path == self.audio_path))
+            chapters = record.get("chapters", [])
+            if path == self.audio_path and self.audio_chapters:
+                chapters = [str(ch.get("title") or f"Chapter {i + 1}") for i, ch in enumerate(self.audio_chapters)]
+            for index, chapter in enumerate(chapters):
+                iid = self.toc_tree.insert(book_node, tk.END, text=str(chapter))
+                self._toc_items[iid] = ("audio", path, index)
+        self._fit_audio_sidebar()
+
+    def _fit_audio_sidebar(self):
+        try:
+            font = tkfont.Font(root=self, font=("Sans", 10))
+            widths = [font.measure("CONTENTS")]
+            for item in self.toc_tree.get_children():
+                widths.append(font.measure(self.toc_tree.item(item, "text")) + 18)
+                for child in self.toc_tree.get_children(item):
+                    widths.append(font.measure(self.toc_tree.item(child, "text")) + 36)
+            available = max(260, int(self.panes.winfo_width()))
+            target = sidebar_width_for_labels(widths, available, 250, 460, 72)
+            self.toc_tree.column("#0", width=max(165, target - 72), minwidth=160, stretch=True)
+        except (tk.TclError, ValueError):
+            pass
 
     def _audio_chapter_selected(self, _event=None):
-        selected = self.audio_chapter_list.curselection()
-        if not selected or not self.audio_backend:
-            return
+        return
+
+    def _audio_select_chapter(self, path, index):
+        if path != self.audio_path:
+            self.open_audiobook(path, resume=True)
         try:
-            self.audio_backend.select_chapter(selected[0])
+            self.audio_backend.select_chapter(index)
             self._save_audio_position()
+            self._audio_update_tick()
         except AudiobookError as exc:
             messagebox.showerror("Chapter unavailable", str(exc), parent=self)
 
-    def _audio_play_pause(self):
+    def _audio_play(self):
         if not self.audio_backend or not self.audio_path:
             self.open_audiobook_dialog()
             return
         try:
-            playing = self.audio_backend.play_pause()
-            self.audio_play_button.configure(text="Pause" if playing else "Play")
+            self.audio_backend.play()
         except AudiobookError as exc:
             messagebox.showerror("Playback problem", str(exc), parent=self)
+
+    def _audio_pause(self):
+        if not self.audio_backend or not self.audio_path:
+            return
+        try:
+            self.audio_backend.pause()
+        except AudiobookError as exc:
+            messagebox.showerror("Playback problem", str(exc), parent=self)
+
+    def _audio_set_volume(self, value):
+        if self.audio_backend and self.audio_path:
+            try:
+                self.audio_backend.set_volume(value)
+            except AudiobookError:
+                pass
+
+    def _audio_toggle_mute(self):
+        if not self.audio_backend or not self.audio_path:
+            return
+        try:
+            status = self.audio_backend.status()
+            muted = self.audio_backend.set_mute(not bool(status.get("mute")))
+            self.audio_mute_button.configure(text="Unmute" if muted else "Mute")
+        except AudiobookError as exc:
+            messagebox.showerror("Audio problem", str(exc), parent=self)
+
+    def _audio_set_speed(self, _event=None):
+        if not self.audio_backend or not self.audio_path:
+            return
+        try:
+            self.audio_backend.set_speed(self.audio_speed_var.get().replace("×", ""))
+        except AudiobookError as exc:
+            messagebox.showerror("Playback speed", str(exc), parent=self)
 
     def _audio_skip(self, seconds):
         if not self.audio_backend or not self.audio_path:
@@ -1461,15 +1571,14 @@ class Reader(tk.Tk):
             if duration > 0 and not self.audio_seeking:
                 self.audio_seek.configure(to=duration)
                 self.audio_position_var.set(position)
-                self.audio_time_label.configure(
-                    text=f"{format_time(position)} elapsed  ·  {format_time(max(0, duration-position))} remaining"
-                )
-            self.audio_play_button.configure(text="Play" if paused else "Pause")
+                self.audio_elapsed_label.configure(text=format_time(position))
+                self.audio_remaining_label.configure(text=f"-{format_time(max(0, duration-position))}")
+                self.audio_time_label.configure(text=f"{format_time(position)} elapsed · {format_time(max(0, duration-position))} remaining")
             chapter_index = status.get("chapter")
             if isinstance(chapter_index, int) and 0 <= chapter_index < len(self.audio_chapters):
-                self.audio_chapter_list.selection_clear(0, tk.END)
-                self.audio_chapter_list.selection_set(chapter_index)
-                self.audio_chapter_list.see(chapter_index)
+                self.audio_chapter_title.configure(
+                    text=str(self.audio_chapters[chapter_index].get("title") or f"Chapter {chapter_index + 1}")
+                )
             self._save_audio_position(status)
         except (AudiobookError, OSError, TypeError, ValueError):
             pass
@@ -1511,7 +1620,6 @@ class Reader(tk.Tk):
                 self._save_state()
             except (AudiobookError, OSError):
                 pass
-        self.audio_play_button.configure(text="Play")
         self.audio_position_var.set(0)
         self.audio_time_label.configure(text="Stopped · ready to play from the beginning")
 
@@ -1992,6 +2100,9 @@ class Reader(tk.Tk):
         if not selected:
             return
         data = self._toc_items.get(selected[0])
+        if data and data[0] == "audio":
+            self._audio_select_chapter(data[1], data[2])
+            return
         if data and data[0] is not None and (data[0] != self.index or data[1]):
             self.show_chapter(data[0], fragment=data[1])
 
