@@ -478,18 +478,31 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
             method.index("self.toolbar.pack("),
         )
 
-    def test_audiobook_open_runs_in_a_worker_thread(self):
-        method = self._method_source("open_audiobook", "_load_audiobook_worker")
-        self.assertIn("threading.Thread(", method)
-        self.assertIn("worker.start()", method)
+    def test_audiobook_open_is_queued_to_the_single_audio_owner(self):
+        method = self._method_source("open_audiobook", "_poll_audio_load_queue")
+        self.assertIn("self.audio_worker.submit(", method)
         self.assertNotIn("self.audio_backend.load(path)", method)
+        self.assertNotIn("threading.Thread(", method)
 
-    def test_audiobook_status_polling_runs_in_a_worker_thread(self):
-        method = self._method_source("_audio_update_tick", "_save_audio_position")
+    def test_audiobook_ui_only_consumes_worker_events(self):
+        method = self._method_source("_poll_audio_load_queue", "_finish_audiobook_open")
+        self.assertIn("self.audio_worker.events.get_nowait()", method)
         self.assertNotIn("self.audio_backend.status()", method)
-        monitor = self._method_source("_start_audio_status_monitor", "_stop_audio_status_monitor")
-        self.assertIn("threading.Thread(", monitor)
-        self.assertIn("self.audio_backend.status()", monitor)
+        self.assertNotIn("threading.Thread(", method)
+
+    def test_playback_controls_are_queued_not_run_on_tk_thread(self):
+        for name, next_name in [
+            ("_audio_play", "_audio_pause"),
+            ("_audio_pause", "_audio_set_volume"),
+            ("_audio_set_volume", "_audio_toggle_mute"),
+            ("_audio_toggle_mute", "_audio_set_speed"),
+            ("_audio_set_speed", "_audio_skip"),
+            ("_audio_skip", "_audio_seek_preview"),
+            ("_audio_seek_commit", "_audio_update_tick"),
+        ]:
+            method = self._method_source(name, next_name)
+            self.assertIn("self.audio_worker.submit(", method, name)
+            self.assertNotIn("self.audio_backend.", method, name)
 
     def test_audio_progress_saving_uses_a_cached_status_snapshot(self):
         method = self._method_source("_save_audio_position", "_audio_stop")
@@ -526,7 +539,7 @@ class AudiobookDisplayTitleTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.12")
+        self.assertEqual(reader.APP_VERSION, "0.13.13")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
