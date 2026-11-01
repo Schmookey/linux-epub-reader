@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+export TCL_LIBRARY="${TCL_LIBRARY:-/app/lib/tcl9.1}"
+export TK_LIBRARY="${TK_LIBRARY:-/app/lib/tk9.1}"
+export LINUX_EPUB_READER_STATE_DIR="${LINUX_EPUB_READER_STATE_DIR:-$HOME/.local/share/linux-epub-reader-preview}"
+exec /app/bin/python3.15 /app/lib/linux-epub-reader/linux_epub_reader.py "$@"
