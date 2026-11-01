@@ -1584,6 +1584,32 @@ class Reader(tk.Tk):
                 elif event_type == "status":
                     if self.audio_is_active:
                         self._audio_update_tick(event.get("status") or {})
+                elif event_type == "command_started":
+                    action = event.get("action", "")
+                    labels = {
+                        "play": "Starting playback…",
+                        "pause": "Pausing audiobook…",
+                        "stop": "Stopping audiobook…",
+                        "seek": "Moving to requested position…",
+                        "skip": "Skipping audiobook…",
+                        "mute": "Changing mute setting…",
+                        "toggle_mute": "Changing mute setting…",
+                    }
+                    if labels.get(action):
+                        self.status.configure(text=labels[action])
+                elif event_type == "command_completed":
+                    action = event.get("action", "")
+                    labels = {
+                        "play": "Audiobook playing",
+                        "pause": "Audiobook paused",
+                        "stop": "Audiobook stopped at the beginning",
+                        "seek": "Playback position updated",
+                        "skip": "Playback position updated",
+                        "mute": "Mute setting updated",
+                        "toggle_mute": "Mute setting updated",
+                    }
+                    if labels.get(action):
+                        self.status.configure(text=labels[action])
                 elif event_type == "error":
                     if event.get("action") == "open":
                         self.audio_loading = False
@@ -1757,13 +1783,17 @@ class Reader(tk.Tk):
         """Select and reveal the currently playing embedded chapter."""
         for iid, data in self._toc_items.items():
             if data and data[0] == "audio" and data[2] == chapter_index:
-                self._setting_toc_selection = True
-                try:
-                    self.toc_tree.selection_set(iid)
-                    self.toc_tree.focus(iid)
-                    self.toc_tree.see(iid)
-                finally:
-                    self._setting_toc_selection = False
+                # Do not call see() on every status update: it yanks the
+                # Contents panel back to the playing chapter while the user
+                # is manually scrolling. Reveal only when selection changes.
+                if self.toc_tree.selection() != (iid,):
+                    self._setting_toc_selection = True
+                    try:
+                        self.toc_tree.selection_set(iid)
+                        self.toc_tree.focus(iid)
+                        self.toc_tree.see(iid)
+                    finally:
+                        self._setting_toc_selection = False
                 return
 
     def _audio_chapter_selected(self, _event=None):
@@ -1793,10 +1823,9 @@ class Reader(tk.Tk):
     def _audio_toggle_mute(self):
         if not self.audio_backend or not self.audio_path:
             return
-        current_mute = bool((self._last_audio_status or {}).get("mute", False))
-        muted = not current_mute
-        self.audio_worker.submit("mute", self._audio_load_token, muted)
-        self._set_audio_mute_icon(muted)
+        # Toggle on the MPV-owning thread using its latest acknowledged state;
+        # do not calculate from a potentially stale Tk-side status snapshot.
+        self.audio_worker.submit("toggle_mute", self._audio_load_token)
 
     def _audio_set_speed(self, _event=None):
         if not self.audio_backend or not self.audio_path:
@@ -1809,9 +1838,7 @@ class Reader(tk.Tk):
     def _audio_skip(self, seconds):
         if not self.audio_backend or not self.audio_path:
             return
-        current = float((self._last_audio_status or {}).get("time_pos") or 0)
-        target = max(0.0, current + seconds)
-        self.audio_worker.submit("seek", self._audio_load_token, target)
+        self.audio_worker.submit("skip", self._audio_load_token, seconds)
 
     def _audio_seek_preview(self, value):
         if self.audio_seek.instate(["!disabled"]):
