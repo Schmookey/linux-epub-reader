@@ -388,23 +388,34 @@ class MPVBackend:
             raise AudiobookError("Choose a valid chapter.")
         self.command("set_property", "chapter", chapter_index)
 
-    def status(self):
+    def status(self, include_details=True):
+        """Read playback state; routine updates only request the two live properties.
+
+        Duration, chapters, metadata and control settings do not need to be
+        fetched every second. Keeping routine polling small leaves the worker
+        free to process button commands promptly.
+        """
         def prop(name):
             try:
                 return self._request({"command": ["get_property", name]})
             except AudiobookError:
                 return None
-        return {
+
+        snapshot = {
             "time_pos": prop("time-pos"),
-            "duration": prop("duration"),
             "paused": prop("pause"),
-            "chapter": prop("chapter"),
-            "chapters": chapter_rows(prop("chapter-list")),
-            "metadata": prop("metadata") or {},
-            "volume": prop("volume"),
-            "mute": prop("mute"),
-            "speed": prop("speed"),
         }
+        if include_details:
+            snapshot.update({
+                "duration": prop("duration"),
+                "chapter": prop("chapter"),
+                "chapters": chapter_rows(prop("chapter-list")),
+                "metadata": prop("metadata") or {},
+                "volume": prop("volume"),
+                "mute": prop("mute"),
+                "speed": prop("speed"),
+            })
+        return snapshot
 
     def close(self):
         """Close MPV safely even if the background status monitor is polling."""
@@ -459,6 +470,7 @@ class AudioWorker:
         self._backend = None
         self._active_path = None
         self._active_token = 0
+        self._last_status = {}
         self._thread = threading.Thread(
             target=self._run, name="M4B audio owner", daemon=True
         )
@@ -522,6 +534,7 @@ class AudioWorker:
             if diagnostic:
                 detail += "\\n\\nMPV diagnostics:\\n" + diagnostic
             raise AudiobookError(detail) from exc
+        self._last_status = dict(status or {})
         self._active_path = path
         self._active_token = token
         self._emit(
@@ -540,31 +553,64 @@ class AudioWorker:
 
         if action == "play":
             self._backend.play()
+            self._last_status["paused"] = False
         elif action == "pause":
             self._backend.pause()
+            self._last_status["paused"] = True
         elif action == "volume":
-            self._backend.set_volume(args[0])
+            self._last_status["volume"] = self._backend.set_volume(args[0])
         elif action == "mute":
-            self._backend.set_mute(args[0])
+            self._last_status["mute"] = self._backend.set_mute(args[0])
+        elif action == "toggle_mute":
+            muted = not bool(self._last_status.get("mute", False))
+            self._last_status["mute"] = self._backend.set_mute(muted)
         elif action == "speed":
-            self._backend.set_speed(args[0])
+            self._last_status["speed"] = self._backend.set_speed(args[0])
         elif action == "seek":
-            self._backend.seek(args[0])
+            position = max(0.0, float(args[0]))
+            self._backend.seek(position)
+            self._last_status["time_pos"] = position
+        elif action == "skip":
+            current = max(0.0, float(self._last_status.get("time_pos") or 0))
+            position = max(0.0, current + float(args[0]))
+            self._backend.seek(position)
+            self._last_status["time_pos"] = position
         elif action == "chapter":
-            self._backend.select_chapter(args[0])
+            chapter_index = int(args[0])
+            self._backend.select_chapter(chapter_index)
+            self._last_status["chapter"] = chapter_index
         elif action == "stop":
             # Stop means return to the beginning while keeping the book loaded.
             self._backend.seek(0)
             self._backend.pause()
+            self._last_status.update({"time_pos": 0.0, "paused": True, "chapter": 0})
         else:
             raise AudiobookError("Unknown audiobook operation.")
-        self._publish_status()
 
     def _publish_status(self):
         if self._backend is None or not self._active_path:
             return
         try:
-            status = self._backend.status()
+            # Live polling is deliberately limited to time-pos and pause.
+            # Merge those values into the last full snapshot from open.
+            live = self._backend.status(include_details=False)
+            status = dict(self._last_status)
+            status.update(live)
+            position = status.get("time_pos")
+            chapters = status.get("chapters") or []
+            if position is not None and chapters:
+                try:
+                    position = max(0.0, float(position))
+                    active_chapter = 0
+                    for index, chapter in enumerate(chapters):
+                        if position >= float(chapter.get("time", 0.0)):
+                            active_chapter = index
+                        else:
+                            break
+                    status["chapter"] = active_chapter
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            self._last_status = dict(status)
         except Exception as exc:
             self._emit(
                 "error", self._active_token, action="status",
@@ -594,6 +640,7 @@ class AudioWorker:
 
                 if action == "shutdown":
                     break
+                self._emit("command_started", token, action=action)
                 try:
                     self._execute(action, token, args)
                 except Exception as exc:
@@ -603,6 +650,8 @@ class AudioWorker:
                         "error", token, action=action,
                         error=f"{type(exc).__name__}: {exc}",
                     )
+                else:
+                    self._emit("command_completed", token, action=action)
 
                 if self._active_path:
                     if next_poll is None:
