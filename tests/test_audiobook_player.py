@@ -231,8 +231,8 @@ class AudioWorkerTests(unittest.TestCase):
             self.assertEqual(set(call_threads), {backend_thread[0]})
             self.assertEqual(
                 [name for name, _args in calls if name != "status"],
-                ["load", "play", "pause", "volume", "mute", "speed",
-                 "seek", "chapter", "seek", "pause", "close"],
+                ["load", "volume", "speed", "play", "pause", "volume",
+                 "mute", "speed", "seek", "chapter", "seek", "pause", "close"],
             )
 
     def test_open_error_is_reported_without_stopping_worker(self):
