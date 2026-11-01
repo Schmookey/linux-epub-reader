@@ -539,7 +539,7 @@ class AudiobookDisplayTitleTests(unittest.TestCase):
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.13")
+        self.assertEqual(reader.APP_VERSION, "0.13.14")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
