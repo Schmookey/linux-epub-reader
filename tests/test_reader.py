@@ -101,6 +101,34 @@ class ReadingStateFileTests(unittest.TestCase):
         self.assertFalse(blocked)
         self.assertEqual(message, "")
 
+    def test_audiobook_progress_round_trips_without_changing_epub_reading_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            audiobook_path = os.path.join(directory, "Books", "sample.m4b")
+            original_book_state = {"chapter": 4, "fraction": 0.65, "bookmarks": [{"title": "Keep"}]}
+            state = {
+                "books": {"epub-key": dict(original_book_state)},
+                "last_opened_item": {
+                    "type": "audiobook", "path": audiobook_path, "title": "Sample"
+                },
+                "audiobooks": {
+                    audiobook_path: {
+                        "path": audiobook_path, "title": "Sample",
+                        "position": 1834.5, "duration": 7200.0, "chapter": 7,
+                    }
+                },
+            }
+            reader.save_state_file(state, path)
+            restored, backup, writes_blocked, message = reader.load_state_file(path)
+
+        self.assertIsNone(backup)
+        self.assertFalse(writes_blocked)
+        self.assertEqual(message, "")
+        self.assertEqual(restored["audiobooks"][audiobook_path]["position"], 1834.5)
+        self.assertEqual(restored["audiobooks"][audiobook_path]["chapter"], 7)
+        self.assertEqual(restored["last_opened_item"]["type"], "audiobook")
+        self.assertEqual(restored["books"]["epub-key"], original_book_state)
+
     def test_malformed_json_is_preserved_before_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "reading_state.json")
