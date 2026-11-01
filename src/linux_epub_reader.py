@@ -1563,7 +1563,7 @@ class Reader(tk.Tk):
         self._save_audio_position()
 
     def _show_audio_cover(self, cover_bytes):
-        self.audio_cover_photo = self._create_cover_photo(cover_bytes, (340, 340)) if cover_bytes else None
+        self.audio_cover_photo = self._create_cover_photo(cover_bytes, (380, 380)) if cover_bytes else None
         self.audio_cover_label.configure(image="", text="")
         if self.audio_cover_photo is not None:
             self.audio_cover_label.configure(image=self.audio_cover_photo)
