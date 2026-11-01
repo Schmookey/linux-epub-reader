@@ -157,5 +157,111 @@ class BackendCommandTests(unittest.TestCase):
         self.assertEqual(calls[-1]["command"], ["set_property", "speed", 1.25])
 
 
+class AudioWorkerTests(unittest.TestCase):
+    def test_all_backend_calls_are_owned_by_one_worker_thread(self):
+        import queue
+        import threading
+        import time
+
+        calls = []
+        call_threads = []
+        backend_thread = []
+
+        class FakeBackend:
+            def __init__(self):
+                backend_thread.append(threading.get_ident())
+
+            def _record(self, name, *args):
+                calls.append((name, args))
+                call_threads.append(threading.get_ident())
+
+            def load(self, path):
+                self._record("load", path)
+                return {"duration": 10.0, "paused": True}
+
+            def status(self):
+                self._record("status")
+                return {
+                    "duration": 10.0, "time_pos": 0.0, "paused": True,
+                    "chapter": 0, "chapters": [], "volume": 70.0,
+                    "mute": False, "speed": 1.0, "metadata": {},
+                }
+
+            def play(self): self._record("play")
+            def pause(self): self._record("pause")
+            def set_volume(self, value): self._record("volume", value)
+            def set_mute(self, value): self._record("mute", value)
+            def set_speed(self, value): self._record("speed", value)
+            def seek(self, value): self._record("seek", value)
+            def select_chapter(self, value): self._record("chapter", value)
+            def close(self): self._record("close")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "worker-test.m4b")
+            Path(path).write_bytes(b"test")
+            worker = audio.AudioWorker(
+                backend_factory=FakeBackend, poll_interval=30
+            )
+            try:
+                worker.submit("open", 4, path, 0.0, None)
+                loaded = worker.events.get(timeout=3)
+                self.assertEqual(loaded["type"], "loaded")
+                self.assertEqual(loaded["token"], 4)
+
+                for action, args in [
+                    ("play", ()), ("pause", ()), ("volume", (55,)),
+                    ("mute", (True,)), ("speed", (1.25,)),
+                    ("seek", (8,)), ("chapter", (1,)), ("stop", ()),
+                ]:
+                    worker.submit(action, 4, *args)
+
+                observed = set()
+                deadline = time.monotonic() + 3
+                while len(observed) < 8 and time.monotonic() < deadline:
+                    event = worker.events.get(timeout=max(0.05, deadline-time.monotonic()))
+                    if event["type"] == "status":
+                        # Each completed command publishes a status snapshot.
+                        observed.add(len(observed))
+                self.assertEqual(len(observed), 8)
+            finally:
+                worker.shutdown()
+                worker.join(timeout=3)
+            self.assertFalse(worker.is_alive)
+            self.assertTrue(call_threads)
+            self.assertEqual(set(call_threads), {backend_thread[0]})
+            self.assertEqual(
+                [name for name, _args in calls if name != "status"],
+                ["load", "play", "pause", "volume", "mute", "speed",
+                 "seek", "chapter", "seek", "pause", "close"],
+            )
+
+    def test_open_error_is_reported_without_stopping_worker(self):
+        import threading
+
+        class BrokenBackend:
+            def load(self, _path):
+                raise audio.AudiobookError("test load failure")
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "broken.m4b")
+            Path(path).write_bytes(b"test")
+            worker = audio.AudioWorker(
+                backend_factory=BrokenBackend, poll_interval=30
+            )
+            try:
+                worker.submit("open", 9, path, 0.0, None)
+                event = worker.events.get(timeout=3)
+                self.assertEqual(event["type"], "error")
+                self.assertEqual(event["action"], "open")
+                self.assertIn("test load failure", event["error"])
+                self.assertTrue(worker.is_alive)
+            finally:
+                worker.shutdown()
+                worker.join(timeout=3)
+            self.assertFalse(worker.is_alive)
+
+
 if __name__ == "__main__":
     unittest.main()
