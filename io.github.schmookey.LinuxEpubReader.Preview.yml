@@ -1,0 +1,186 @@
+app-id: io.github.schmookey.LinuxEpubReader.Preview
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: linux-epub-reader-preview
+
+# GitHub release bundle, not a Flathub submission. Do not add network access.
+finish-args:
+  - --socket=x11
+  # Audio output through PulseAudio (also supported by PipeWire's pipewire-pulse).
+  - --socket=pulseaudio
+  - --share=ipc
+  - --filesystem=home:ro
+  # Keep reading-state writes limited to the application's existing state directory.
+  - --filesystem=~/.local/share/linux-epub-reader-preview:create
+  - --env=LINUX_EPUB_READER_STATE_DIR=/home/user/.local/share/linux-epub-reader-preview
+  - --env=TCL_LIBRARY=/app/lib/tcl9.1
+  - --env=TK_LIBRARY=/app/lib/tk9.1
+
+modules:
+  - name: python-with-tk
+    buildsystem: simple
+    build-commands:
+      - |
+        export TCLTK_CFLAGS="-I${FLATPAK_DEST}/include"
+        export TCLTK_LIBS="-L${FLATPAK_DEST}/lib -ltcl9tk9.1 -ltcl9.1"
+        export LDFLAGS="-Wl,-rpath,${FLATPAK_DEST}/lib"
+        ./configure --prefix=${FLATPAK_DEST} --enable-shared --with-ensurepip=no --disable-test-modules
+      - make -j2
+      - make install
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/python/LICENSE
+      - test -f ${FLATPAK_DEST}/lib/tcl9.1/init.tcl && test -f ${FLATPAK_DEST}/lib/tk9.1/tk.tcl
+      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib TCL_LIBRARY=${FLATPAK_DEST}/lib/tcl9.1 TK_LIBRARY=${FLATPAK_DEST}/lib/tk9.1 ${FLATPAK_DEST}/bin/python3.15 -c 'import tkinter; interpreter = tkinter.Tcl(); print("Bundled Tcl " + interpreter.eval("info patchlevel") + " initialised; library path = " + interpreter.eval("set tcl_library"))'
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.15.2/Python-3.15.2.tar.xz
+        sha256: 8b5536d280142ecf6cdfe15d12a21ba1c65e300bbf7b28a8d0cdb849575797de
+    modules:
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --enable-threads
+          - --enable-shared
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9.1.so
+          - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tcl/LICENSE
+        sources:
+          - type: git
+            url: https://github.com/tcltk/tcl.git
+            tag: core-9-1-0
+            commit: 0c6bad08d91fa2ad51f05a50a41f8c1ea82ce985
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --enable-threads
+          - --enable-shared
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9tk9.1.so
+          - install -Dm644 ../license.terms ${FLATPAK_DEST}/share/licenses/tk/LICENSE
+        sources:
+          - type: git
+            url: https://github.com/tcltk/tk.git
+            tag: core-9-1-0
+            commit: 3f45110c0a568b70f2ebd5412f215e87d199bc7d
+      - name: pillow
+        buildsystem: simple
+        build-commands:
+          - install -d ${FLATPAK_DEST}/lib/python3.15/site-packages
+          - cp -a PIL pillow.libs pillow-13.0.0.dist-info ${FLATPAK_DEST}/lib/python3.15/site-packages/
+        sources:
+          - type: archive
+            url: https://files.pythonhosted.org/packages/85/11/e46fa0bcc0fc117f1eacc206b3d51f04d583fab328b4b740672d0438d83f/pillow-13.0.0-cp315-cp315-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+            sha256: 8f36aa77f74b14a2103622b196402c71330e4e7cf4122ee45c854e9a01e0eecf
+            archive-type: zip
+            strip-components: 0
+
+  # Bundled offline-only audio engine. FFmpeg has network protocols disabled.
+  - name: ffmpeg
+    post-install:
+      - install -Dm644 COPYING.LGPLv2.1 ${FLATPAK_DEST}/share/licenses/ffmpeg/COPYING.LGPLv2.1
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg
+    config-opts:
+      - --disable-static
+      - --enable-shared
+      - --disable-doc
+      - --disable-programs
+      - --disable-network
+    sources:
+      - type: archive
+        url: https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.0.1.tar.gz
+        sha256: 195d54bebe1a27f84d77f4b989d193466f305b355da92292766a69f16880b18a
+
+  - name: libplacebo
+    buildsystem: meson
+    post-install:
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/LICENSE ${FLATPAK_DEST}/share/licenses/libplacebo/LICENSE
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+        disable-submodules: true
+      - type: archive
+        url: https://github.com/pallets/jinja/archive/refs/tags/3.1.6.tar.gz
+        sha256: 2074b22a72caa65474902234b320d73463d6d4c223ee49f4b433495758356337
+        dest: 3rdparty/jinja
+      - type: archive
+        url: https://github.com/pallets/markupsafe/archive/refs/tags/3.0.3.tar.gz
+        sha256: f1d9d06c34515dd3ad210ec769da613057b536d11d6c039183b87757a883a254
+        dest: 3rdparty/markupsafe
+      - type: archive
+        url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz
+        sha256: 44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc
+        dest: 3rdparty/glad
+
+  - name: libass
+    post-install:
+      - install -Dm644 COPYING ${FLATPAK_DEST}/share/licenses/libass/COPYING
+    config-opts:
+      - --disable-static
+      - --enable-fontconfig
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/archive/refs/tags/0.17.5.tar.gz
+        sha256: fa286fc9ee1ba3b932703a3df7b8474d01dc8abe29ec69b6fa68781dc4bf7acc
+
+  - name: mpv
+    buildsystem: meson
+    post-install:
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/LICENSE.LGPL ${FLATPAK_DEST}/share/licenses/mpv/LICENSE.LGPL
+    config-opts:
+      - -Dcplayer=true
+      - -Dlibmpv=false
+      - -Dgpl=false
+      - -Dbuild-date=false
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dpdf-build=disabled
+      - -Dtests=false
+      - -Dcdda=disabled
+      - -Ddvdnav=disabled
+      - -Ddvbin=disabled
+      - -Dlibbluray=disabled
+      - -Dlibarchive=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dvapoursynth=disabled
+      - -Dcplugins=disabled
+      - -Drubberband=disabled
+      - -Dalsa=enabled
+      - -Dpulse=enabled
+      - -Dpipewire=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+  - name: linux-epub-reader
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 packaging/flatpak/linux-epub-reader-preview-launcher ${FLATPAK_DEST}/bin/linux-epub-reader-preview
+      - install -Dm644 src/linux_epub_reader.py ${FLATPAK_DEST}/lib/linux-epub-reader/linux_epub_reader.py
+      - install -Dm644 src/audiobook_player.py ${FLATPAK_DEST}/lib/linux-epub-reader/audiobook_player.py
+      - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.Preview.desktop ${FLATPAK_DEST}/share/applications/io.github.schmookey.LinuxEpubReader.Preview.desktop
+      - install -Dm644 share/icons/hicolor/scalable/apps/linux-epub-reader.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.schmookey.LinuxEpubReader.Preview.svg
+      - install -Dm644 packaging/flatpak/io.github.schmookey.LinuxEpubReader.Preview.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.schmookey.LinuxEpubReader.Preview.metainfo.xml
+      - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/io.github.schmookey.LinuxEpubReader.Preview/LICENSE
+      - install -Dm644 packaging/flatpak/THIRD_PARTY_NOTICES.md ${FLATPAK_DEST}/share/doc/linux-epub-reader/THIRD_PARTY_NOTICES.md
+    sources:
+      - type: dir
+        path: .
