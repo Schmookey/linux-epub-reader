@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.11-1 — Audiobook player visual and navigation refinement
+
+- Match the audiobook screen more closely to the approved cover-led design, with rounded circular transport controls.
+- Add a visible working volume rocker/slider and speaker mute toggle, synchronised with MPV playback state.
+- Keep embedded chapter titles in the left Contents panel, replace generic numbered track/file names with Chapter labels, and wrap long titles to fit without horizontal scrolling.
+- Highlight the chapter currently playing and retain per-audiobook progress.
+
+
 ## 0.13.10-1 — Resume and full-screen layout fixes
 
 - Restore the reader text frame before packing its chapter heading, preventing Tkinter pack-order errors when resuming a book from the welcome-back panel.
