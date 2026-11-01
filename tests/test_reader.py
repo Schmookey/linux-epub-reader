@@ -479,10 +479,36 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
         )
 
 
+class AudiobookDisplayTitleTests(unittest.TestCase):
+    def test_numbered_file_and_track_names_become_chapter_labels(self):
+        self.assertEqual(reader.audiobook_display_chapter_title("001", 0), "Chapter 1")
+        self.assertEqual(reader.audiobook_display_chapter_title("Track 002", 1), "Chapter 2")
+        self.assertEqual(reader.audiobook_display_chapter_title("File 003", 2), "Chapter 3")
+
+    def test_meaningful_embedded_chapter_title_is_preserved(self):
+        self.assertEqual(
+            reader.audiobook_display_chapter_title("001 - The Long Journey Home", 0),
+            "The Long Journey Home",
+        )
+
+    def test_missing_or_generic_title_uses_chapter_number(self):
+        self.assertEqual(reader.audiobook_display_chapter_title("", 4), "Chapter 5")
+        self.assertEqual(reader.audiobook_display_chapter_title("Chapter 0006", 5), "Chapter 6")
+
+    def test_wrapped_chapter_title_keeps_every_word(self):
+        class TestFont:
+            def measure(self, value):
+                return len(value) * 7
+        title = "A Very Long Chapter Name That Must Remain Fully Visible"
+        wrapped = reader.wrap_audio_chapter_title(title, TestFont(), 112)
+        self.assertEqual(" ".join(wrapped.splitlines()), title)
+        self.assertGreater(len(wrapped.splitlines()), 1)
+
+
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.10")
+        self.assertEqual(reader.APP_VERSION, "0.13.11")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:
