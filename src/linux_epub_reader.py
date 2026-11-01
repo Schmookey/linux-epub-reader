@@ -1638,9 +1638,14 @@ class Reader(tk.Tk):
                             "is readable and is not DRM-protected.",
                             parent=self,
                         )
-                    elif event.get("action") != "status":
+                    else:
+                        prefix = (
+                            "Audiobook status failed"
+                            if event.get("action") == "status"
+                            else "Audiobook control failed"
+                        )
                         self.status.configure(
-                            text=f"Audiobook control failed: {event.get('error', 'Unknown error')}"
+                            text=f"{prefix}: {event.get('error', 'Unknown error')}"
                         )
         except queue.Empty:
             pass
