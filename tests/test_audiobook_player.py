@@ -51,11 +51,11 @@ class AudiobookHelpersTests(unittest.TestCase):
         def atom(kind, payload):
             return (len(payload) + 8).to_bytes(4, "big") + kind + payload
 
-        jpeg = b"\\xff\\xd8\\xffmock-jpeg-data"
-        data = atom(b"data", (13).to_bytes(4, "big") + b"\\0\\0\\0\\0" + jpeg)
+        jpeg = bytes.fromhex("ffd8ff") + b"mock-jpeg-data"
+        data = atom(b"data", (13).to_bytes(4, "big") + bytes(4) + jpeg)
         covr = atom(b"covr", data)
         ilst = atom(b"ilst", covr)
-        meta = atom(b"meta", b"\\0\\0\\0\\0" + ilst)
+        meta = atom(b"meta", bytes(4) + ilst)
         udta = atom(b"udta", meta)
         moov = atom(b"moov", udta)
         with tempfile.TemporaryDirectory() as directory:
