@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.13-1 — Single-owner audiobook playback
+
+- Replace the separate audiobook loading and status-monitor threads with one dedicated audio worker that owns MPV for its entire lifetime.
+- Queue opening, playback, pause, seek, chapter, volume, mute and speed operations through the same worker; status polling is performed by that worker between commands.
+- Keep all Tk widget updates on the interface thread and show worker errors without blocking the reader.
+- Add tests verifying that all MPV backend calls run on one thread and that load errors are reported while the worker remains responsive.
+
+
 ## 0.13.12-1 — Responsive audiobook loading and playback status
 
 - Move M4B loading, MPV media probing and embedded cover-art extraction off the Tk interface thread.
