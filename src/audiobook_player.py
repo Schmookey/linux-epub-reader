@@ -384,13 +384,22 @@ class MPVBackend:
     def command(self, *arguments):
         return self._request({"command": list(arguments)})
 
-    def load(self, path):
+    def load(self, path, start_position=None):
         local_path = normalise_m4b_path(path)
         self.start()
         # Pause the current session before replacing media so opening a second
         # audiobook can never briefly start it playing automatically.
         self.command("set_property", "pause", True)
-        self.command("loadfile", local_path, "replace")
+        if start_position is not None and float(start_position) > 0:
+            # Pass the resume point as a loadfile option. MPV then seeks as part
+            # of opening the new media, avoiding a race between load completion,
+            # a separate seek command and the first position snapshot.
+            self.command(
+                "loadfile", local_path, "replace",
+                f"start={max(0.0, float(start_position)):.3f}",
+            )
+        else:
+            self.command("loadfile", local_path, "replace")
         self.command("set_property", "pause", True)
         self.current_path = local_path
         # mpv acknowledges loadfile before FFmpeg has finished probing the
