@@ -196,7 +196,9 @@ class AudioWorkerTests(unittest.TestCase):
                 self.seek_target = None
                 self.status_reads_after_seek = 0
 
-            def load(self, _path):
+            def load(self, _path, start_position=None):
+                if start_position is not None:
+                    self.seek_target = float(start_position)
                 return {"duration": 1000.0, "time_pos": 0.0, "paused": True}
 
             def seek(self, value):
@@ -263,8 +265,8 @@ class AudioWorkerTests(unittest.TestCase):
                 calls.append((name, args))
                 call_threads.append(threading.get_ident())
 
-            def load(self, path):
-                self._record("load", path)
+            def load(self, path, start_position=None):
+                self._record("load", path, start_position)
                 return {"duration": 10.0, "paused": True}
 
             def status(self, include_details=True):
