@@ -1481,9 +1481,18 @@ class Reader(tk.Tk):
         )
         self.audio_elapsed_label.pack(side=tk.LEFT)
         self.audio_position_var = tk.DoubleVar(value=0.0)
-        self.audio_seek = ttk.Scale(
+        tk.Label(
+            seek_row, text="Playback position", bg=APP_BG, fg=MUTED_TEXT,
+            font=("Sans", 9),
+        ).pack(side=tk.LEFT, padx=(10, 2))
+        self.audio_seek = tk.Scale(
             seek_row, from_=0, to=1, orient=tk.HORIZONTAL,
             variable=self.audio_position_var, command=self._audio_seek_preview,
+            showvalue=False, resolution=0.1, width=12, sliderlength=28,
+            relief=tk.FLAT, bd=0, highlightthickness=0,
+            bg=MINT_GREEN, fg=DEFAULT_FG, troughcolor="#30343A",
+            activebackground=MINT_GREEN, sliderrelief=tk.FLAT,
+            cursor="hand2",
         )
         self.audio_seek.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
         self.audio_seek.bind("<ButtonPress-1>", self._audio_seek_start)
@@ -1497,18 +1506,19 @@ class Reader(tk.Tk):
         bottom.pack(fill=tk.X, padx=22, pady=(24, 4))
         self.audio_volume_var = tk.DoubleVar(value=80)
         tk.Label(
-            bottom, text="◖))", bg=APP_BG, fg=DEFAULT_FG, font=("Sans", 16)
-        ).pack(side=tk.LEFT)
+            bottom, text="Volume", bg=APP_BG, fg=MUTED_TEXT,
+            font=("Sans", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=(0, 8))
         self.audio_volume = tk.Scale(
             bottom, from_=0, to=100, orient=tk.HORIZONTAL,
             variable=self.audio_volume_var, command=self._audio_set_volume,
-            showvalue=False, resolution=1, length=220, width=12,
-            sliderlength=24, relief=tk.FLAT, bd=0, highlightthickness=0,
-            bg=APP_BG, fg=DEFAULT_FG, troughcolor="#30343A",
+            showvalue=False, resolution=1, length=220, width=14,
+            sliderlength=30, relief=tk.FLAT, bd=0, highlightthickness=0,
+            bg=MINT_GREEN, fg=DEFAULT_FG, troughcolor="#30343A",
             activebackground=MINT_GREEN, sliderrelief=tk.FLAT,
             cursor="hand2",
         )
-        self.audio_volume.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 8))
+        self.audio_volume.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         self.audio_volume.bind(
             "<ButtonPress-1>", lambda _event: setattr(self, "audio_volume_dragging", True)
         )
@@ -1517,11 +1527,16 @@ class Reader(tk.Tk):
         )
         self.audio_mute_button, self.audio_mute_text_id, self.audio_mute_circle = (
             self._make_round_audio_button(
-                bottom, "◖×", self._audio_toggle_mute,
-                size=48, font_size=13, pack=False,
+                bottom, "🔊", self._audio_toggle_mute,
+                size=48, font_size=19, pack=False,
             )
         )
-        self.audio_mute_button.pack(side=tk.LEFT, padx=(4, 16))
+        self.audio_mute_button.pack(side=tk.LEFT, padx=(4, 4))
+        self.audio_mute_label = tk.Label(
+            bottom, text="Mute", bg=APP_BG, fg=MUTED_TEXT,
+            font=("Sans", 9),
+        )
+        self.audio_mute_label.pack(side=tk.LEFT, padx=(0, 16))
 
         tk.Label(
             bottom, text="Speed", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 9)
@@ -1574,8 +1589,10 @@ class Reader(tk.Tk):
         if not hasattr(self, "audio_mute_button"):
             return
         self.audio_mute_button.itemconfigure(
-            self.audio_mute_text_id, text="◖×" if muted else "◖))"
+            self.audio_mute_text_id, text="🔇" if muted else "🔊"
         )
+        if hasattr(self, "audio_mute_label"):
+            self.audio_mute_label.configure(text="Unmute" if muted else "Mute")
 
     def open_audiobook_dialog(self):
         path = filedialog.askopenfilename(
