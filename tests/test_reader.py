@@ -516,6 +516,31 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
         self.assertNotIn("self.audio_backend.status()", method)
         self.assertNotIn("threading.Thread(", method)
 
+    def test_home_resume_captures_saved_position_before_navigation_or_saves(self):
+        method = self._method_source("open_audiobook", "_poll_audio_load_queue")
+        capture = method.index('record = audiobook_record(self.state, path) if resume else {}')
+        navigation = method.index("self.show_audiobook_mode()")
+        queue_open = method.index('"open", token, path, restore_position, chapter_index')
+        self.assertLess(capture, navigation)
+        self.assertLess(navigation, queue_open)
+        self.assertIn('self.audio_path != path and self._last_audio_status', method)
+        self.assertIn('self.audio_path == path and resume', method)
+
+    def test_audiobook_mode_hides_contents_sidebar(self):
+        method = self._method_source("_set_app_mode", "_pause_audio_for_navigation")
+        audiobook_branch = method[method.index('elif mode == "audiobook":'):]
+        self.assertIn("self.left.grid_remove()", audiobook_branch)
+        self.assertIn("self.right.grid(row=0, column=0, columnspan=2", audiobook_branch)
+
+    def test_audiobook_chapters_are_drawn_on_clickable_timeline(self):
+        build = self._method_source("_build_audiobook_screen", "_make_round_audio_button")
+        draw = self._method_source("_draw_audio_chapter_markers", "_audio_chapter_marker_at")
+        click = self._method_source("_audio_chapter_marker_click", "_audio_chapter_marker_hover")
+        self.assertIn("self.audio_chapter_timeline", build)
+        self.assertIn("self._audio_chapter_marker_click", build)
+        self.assertIn("seconds / duration", draw)
+        self.assertIn("self._audio_select_chapter", click)
+
     def test_playback_controls_are_queued_not_run_on_tk_thread(self):
         for name, next_name in [
             ("_audio_play", "_audio_pause"),
