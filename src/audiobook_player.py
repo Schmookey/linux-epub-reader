@@ -608,9 +608,6 @@ class AudioWorker:
         try:
             target = max(0.0, float(restore_position or 0.0))
             if chapter_index is None and target > 0:
-                duration = max(0.0, float(self._backend.status().get("duration") or 0.0))
-                if duration > 0:
-                    target = min(target, max(0.0, duration - 0.25))
                 status = self._backend.load(path, start_position=target)
                 # Verify the load-time offset before publishing the loaded
                 # event. Unlike a post-load seek, MPV applies this offset while
