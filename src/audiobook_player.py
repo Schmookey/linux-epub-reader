@@ -606,21 +606,17 @@ class AudioWorker:
         if self._backend is None:
             self._backend = self._backend_factory()
         try:
-            status = self._backend.load(path)
-            if chapter_index is not None:
-                self._backend.select_chapter(chapter_index)
-            elif restore_position and float(restore_position) > 0:
-                # mpv can acknowledge an exact seek before its time-pos property
-                # reflects the new location. Wait for that property before
-                # publishing "loaded", otherwise the UI may save the stale
-                # beginning position over the user's resume point.
-                duration = max(0.0, float(status.get("duration") or 0.0))
-                target = max(0.0, float(restore_position))
+            target = max(0.0, float(restore_position or 0.0))
+            if chapter_index is None and target > 0:
+                duration = max(0.0, float(self._backend.status().get("duration") or 0.0))
                 if duration > 0:
                     target = min(target, max(0.0, duration - 0.25))
-                self._backend.seek(target)
+                status = self._backend.load(path, start_position=target)
+                # Verify the load-time offset before publishing the loaded
+                # event. Unlike a post-load seek, MPV applies this offset while
+                # opening the file, so no initial 0:00 snapshot can win the race.
                 deadline = time.monotonic() + max(
-                    3.0, float(getattr(self._backend, "startup_timeout", 3.0))
+                    5.0, float(getattr(self._backend, "startup_timeout", 5.0))
                 )
                 restored = False
                 while time.monotonic() < deadline:
@@ -635,9 +631,13 @@ class AudioWorker:
                     time.sleep(0.05)
                 if not restored:
                     raise AudiobookError(
-                        "The audiobook opened, but its saved listening position "
-                        "could not be restored. The saved position has been kept."
+                        "The audiobook opened, but MPV did not confirm the saved "
+                        "listening position. The saved position has been kept."
                     )
+            else:
+                status = self._backend.load(path)
+                if chapter_index is not None:
+                    self._backend.select_chapter(chapter_index)
             # Preserve the player's current controls when switching audiobooks.
             self._backend.set_volume(volume)
             self._backend.set_speed(speed)
