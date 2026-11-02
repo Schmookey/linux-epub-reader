@@ -17,13 +17,15 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 try:
-    from audiobook_player import MPVBackend, AudioWorker, AudiobookError, format_time, extract_cover_art
+    from audiobook_player import (MPVBackend, AudioWorker, AudiobookError,
+                                  format_time, extract_cover_art, extract_audiobook_metadata)
 except ImportError:
     MPVBackend = None
     AudioWorker = None
     AudiobookError = RuntimeError
     format_time = lambda value: "0:00"
     extract_cover_art = lambda path: None
+    extract_audiobook_metadata = lambda path: {}
 
 APP_NAME = "Linux EPUB Reader"
 APP_VERSION = "0.13.14"
@@ -319,6 +321,36 @@ def audiobook_records(state):
         records = {}
         state["audiobooks"] = records
     return records
+
+
+def last_opened_audiobook_info(state):
+    """Return the most recently used audiobook independently of the last EPUB."""
+    if not isinstance(state, dict):
+        return None
+    item = last_opened_item_info(state)
+    path = item["path"] if item and item["type"] == "audiobook" else state.get("last_opened_audiobook")
+    record = {}
+    if not path:
+        records = state.get("audiobooks", {})
+        if isinstance(records, dict):
+            for candidate, value in reversed(list(records.items())):
+                if isinstance(value, dict):
+                    path = value.get("path") or candidate
+                    record = value
+                    break
+    if not isinstance(path, (str, os.PathLike)) or not os.fspath(path).strip():
+        return None
+    path = os.path.abspath(os.path.expanduser(os.fspath(path)))
+    records = state.get("audiobooks", {})
+    if isinstance(records, dict) and isinstance(records.get(path), dict):
+        record = records[path]
+    title = (
+        (item.get("title") if item and item["type"] == "audiobook" else "")
+        or state.get("last_opened_audiobook_title")
+        or record.get("title")
+        or os.path.basename(path)
+    )
+    return {"type": "audiobook", "path": path, "title": str(title), "record": record}
 
 
 def audiobook_record(state, path):
@@ -803,7 +835,10 @@ class Reader(tk.Tk):
         self.audio_backend = self.audio_worker
         self.audio_path = None
         self.audio_title = ""
+        self.audio_metadata = {}
         self.audio_tick_id = None
+        self.current_mode = "home"
+        self._home_cover_photos = []
         self.audio_chapters = []
         self.audio_screen = None
         self.audio_is_active = False
@@ -847,6 +882,7 @@ class Reader(tk.Tk):
         self._welcome_cover_photo = None
         self._build_ui()
         self._refresh_resume_ui()
+        self.show_home_screen()
         # Audiobooks never start automatically: the welcome panel asks before resuming.
         if self._state_recovery_message:
             messagebox.showwarning(
@@ -939,23 +975,55 @@ class Reader(tk.Tk):
                         bordercolor=APP_BG, arrowcolor=MUTED_TEXT, relief="flat")
         style.configure("TPanedwindow", background=APP_BG, sashwidth=5, sashrelief="flat")
 
-        self.toolbar = ttk.Frame(self, padding=(12, 10), style="Toolbar.TFrame")
-        self.toolbar.pack(fill=tk.X)
-        ttk.Button(self.toolbar, text="Open book…", command=self.open_dialog).pack(side=tk.LEFT)
+        # Permanent mode navigation, followed by a context-specific toolbar.
+        self.modebar = ttk.Frame(self, padding=(12, 9), style="Toolbar.TFrame")
+        self.modebar.pack(fill=tk.X)
+        self.home_mode_button = ttk.Button(
+            self.modebar, text="Home", command=self.show_home_screen
+        )
+        self.home_mode_button.pack(side=tk.LEFT, padx=(0, 7))
+        self.ebook_mode_button = ttk.Button(
+            self.modebar, text="EBook", command=self.show_ebook_mode
+        )
+        self.ebook_mode_button.pack(side=tk.LEFT, padx=7)
+        self.audiobook_mode_button = ttk.Button(
+            self.modebar, text="Audiobook", command=self.show_audiobook_mode
+        )
+        self.audiobook_mode_button.pack(side=tk.LEFT, padx=7)
+
+        self.toolbar = ttk.Frame(self, padding=(12, 8), style="Toolbar.TFrame")
+        self.ebook_toolbar = ttk.Frame(self.toolbar, style="Toolbar.TFrame")
+        ttk.Button(self.ebook_toolbar, text="Open book…", command=self.open_dialog).pack(side=tk.LEFT)
         self.resume_button = ttk.Button(
-            self.toolbar, text="Resume last book", command=self.resume_last_book, state=tk.DISABLED
+            self.ebook_toolbar, text="Resume last book",
+            command=self.resume_last_book, state=tk.DISABLED
         )
         self.resume_button.pack(side=tk.LEFT, padx=(7, 0))
-        ttk.Button(self.toolbar, text="Book details", command=self.show_details).pack(side=tk.LEFT, padx=(7, 0))
-        ttk.Button(self.toolbar, text="Search book", command=self.search_dialog).pack(side=tk.LEFT, padx=(7, 0))
-        ttk.Button(self.toolbar, text="Bookmarks", command=self.show_bookmarks).pack(side=tk.LEFT, padx=(7, 0))
-        ttk.Button(self.toolbar, text="Add bookmark", command=self.add_bookmark).pack(side=tk.LEFT, padx=(7, 0))
-        ttk.Button(self.toolbar, text="A−", width=3, command=lambda: self.change_font(-1)).pack(side=tk.LEFT, padx=(14, 3))
-        ttk.Button(self.toolbar, text="A+", width=3, command=lambda: self.change_font(1)).pack(side=tk.LEFT)
-        ttk.Button(self.toolbar, text="Full-screen (F11)", command=self.toggle_fullscreen).pack(side=tk.LEFT, padx=(10, 0))
-        self.book_label = ttk.Label(self.toolbar, text="No book open", style="BookTitle.TLabel")
+        ttk.Button(self.ebook_toolbar, text="Book details", command=self.show_details).pack(side=tk.LEFT, padx=(7, 0))
+        ttk.Button(self.ebook_toolbar, text="Search book", command=self.search_dialog).pack(side=tk.LEFT, padx=(7, 0))
+        ttk.Button(self.ebook_toolbar, text="Bookmarks", command=self.show_bookmarks).pack(side=tk.LEFT, padx=(7, 0))
+        ttk.Button(self.ebook_toolbar, text="Add bookmark", command=self.add_bookmark).pack(side=tk.LEFT, padx=(7, 0))
+        ttk.Button(self.ebook_toolbar, text="A−", width=3, command=lambda: self.change_font(-1)).pack(side=tk.LEFT, padx=(14, 3))
+        ttk.Button(self.ebook_toolbar, text="A+", width=3, command=lambda: self.change_font(1)).pack(side=tk.LEFT)
+        ttk.Button(self.ebook_toolbar, text="Full-screen (F11)", command=self.toggle_fullscreen).pack(side=tk.LEFT, padx=(10, 0))
+        self.book_label = ttk.Label(self.ebook_toolbar, text="No book open", style="BookTitle.TLabel")
         self.book_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(14, 4))
-        ttk.Button(self.toolbar, text="Audiobook", command=self.open_audiobook_dialog).pack(side=tk.RIGHT, padx=(8, 0))
+
+        self.audiobook_toolbar = ttk.Frame(self.toolbar, style="Toolbar.TFrame")
+        ttk.Button(
+            self.audiobook_toolbar, text="Open audiobook…",
+            command=self.open_audiobook_dialog
+        ).pack(side=tk.LEFT)
+        self.audio_resume_button = ttk.Button(
+            self.audiobook_toolbar, text="Resume last audiobook",
+            command=self.resume_last_audiobook, state=tk.DISABLED
+        )
+        self.audio_resume_button.pack(side=tk.LEFT, padx=(7, 0))
+        self.audio_toolbar_label = ttk.Label(
+            self.audiobook_toolbar, text="No audiobook open", style="BookTitle.TLabel"
+        )
+        self.audio_toolbar_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(14, 4))
+        self.ebook_toolbar.pack(fill=tk.X)
 
         # The View menu makes the fullscreen hint preference reversible later.
         menubar = tk.Menu(self)
