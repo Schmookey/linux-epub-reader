@@ -186,6 +186,66 @@ class BackendCommandTests(unittest.TestCase):
 
 
 class AudioWorkerTests(unittest.TestCase):
+    def test_open_waits_until_saved_resume_position_is_reported(self):
+        import queue
+        import threading
+
+        class ResumeBackend:
+            def __init__(self):
+                self.position = 0.0
+                self.seek_target = None
+                self.status_reads_after_seek = 0
+
+            def load(self, _path):
+                return {"duration": 1000.0, "time_pos": 0.0, "paused": True}
+
+            def seek(self, value):
+                self.seek_target = float(value)
+
+            def status(self, include_details=True):
+                if self.seek_target is not None:
+                    self.status_reads_after_seek += 1
+                    # Simulate mpv acknowledging seek before time-pos updates.
+                    if self.status_reads_after_seek >= 3:
+                        self.position = self.seek_target
+                return {
+                    "duration": 1000.0, "time_pos": self.position,
+                    "paused": True, "chapter": 2, "chapters": [],
+                    "volume": 70.0, "mute": False, "speed": 1.0,
+                    "metadata": {},
+                }
+
+            def set_volume(self, _value): pass
+            def set_speed(self, _value): pass
+            def close(self): pass
+            def diagnostics(self): return ""
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "resume-test.m4b")
+            Path(path).write_bytes(b"test")
+            worker = audio.AudioWorker(
+                backend_factory=ResumeBackend, poll_interval=30
+            )
+            try:
+                worker.submit("open", 12, path, 245.0, None)
+                deadline = time.monotonic() + 3
+                loaded = None
+                while time.monotonic() < deadline:
+                    event = worker.events.get(
+                        timeout=max(0.05, deadline - time.monotonic())
+                    )
+                    if event["type"] == "loaded":
+                        loaded = event
+                        break
+                    if event["type"] == "error":
+                        self.fail(event.get("error", "Resume failed"))
+                self.assertIsNotNone(loaded)
+                self.assertAlmostEqual(loaded["status"]["time_pos"], 245.0)
+            finally:
+                worker.shutdown()
+                worker.join(timeout=3)
+            self.assertFalse(worker.is_alive)
+
     def test_all_backend_calls_are_owned_by_one_worker_thread(self):
         import queue
         import threading
