@@ -395,7 +395,7 @@ class MPVBackend:
             # of opening the new media, avoiding a race between load completion,
             # a separate seek command and the first position snapshot.
             self.command(
-                "loadfile", local_path, "replace",
+                "loadfile", local_path, "replace", "-1",
                 f"start={max(0.0, float(start_position)):.3f}",
             )
         else:
