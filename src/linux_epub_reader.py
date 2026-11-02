@@ -945,6 +945,16 @@ class Reader(tk.Tk):
                   background=[("pressed", MINT_DARK), ("active", "#30353B")],
                   foreground=[("disabled", MUTED_TEXT), ("active", "#FFFFFF")],
                   bordercolor=[("focus", MINT_GREEN)])
+        style.configure(
+            "ModeActive.TButton", background=MINT_GREEN, foreground=APP_BG,
+            bordercolor=MINT_GREEN, lightcolor=MINT_GREEN, darkcolor=MINT_GREEN,
+            padding=(16, 8), relief="flat", font=("Sans", 9, "bold"),
+        )
+        style.map(
+            "ModeActive.TButton",
+            background=[("pressed", "#6FAF2E"), ("active", "#9BDC59")],
+            foreground=[("active", APP_BG)],
+        )
         style.configure("LinuxEPUB.Horizontal.TProgressbar", troughcolor="#30343A",
                         background=self.mint_green, bordercolor="#30343A",
                         lightcolor=self.mint_green, darkcolor=self.mint_green,
@@ -1609,6 +1619,7 @@ class Reader(tk.Tk):
         if self.audio_path and self._last_audio_status:
             self._save_audio_position(self._last_audio_status)
 
+        self.show_audiobook_mode()
         record = audiobook_record(self.state, path) if resume else {}
         try:
             restore_position = (
@@ -1647,7 +1658,7 @@ class Reader(tk.Tk):
                     self.audio_loading = False
                     self._finish_audiobook_open(
                         event["path"], event.get("status") or {},
-                        event.get("cover_bytes"),
+                        event.get("cover_bytes"), event.get("file_metadata") or {},
                     )
                 elif event_type == "status":
                     if self.audio_is_active:
@@ -1720,13 +1731,15 @@ class Reader(tk.Tk):
         if not self._audio_close_requested:
             self._audio_load_poll_id = self.after(100, self._poll_audio_load_queue)
 
-    def _finish_audiobook_open(self, path, status, cover_bytes):
+    def _finish_audiobook_open(self, path, status, cover_bytes, file_metadata=None):
         """Update player widgets after the audio owner confirms a successful load."""
         self.audio_path = path
         self.audio_title = os.path.splitext(os.path.basename(path))[0]
         self.audio_is_active = True
         self._last_audio_status = status or {}
         record = audiobook_record(self.state, path)
+        self.state["last_opened_audiobook"] = path
+        self.state["last_opened_audiobook_title"] = self.audio_title
         self.state["last_opened_item"] = {
             "type": "audiobook", "path": path, "title": self.audio_title
         }
@@ -1738,9 +1751,16 @@ class Reader(tk.Tk):
             self._save_state()
         except OSError:
             pass
-        metadata = (status or {}).get("metadata", {}) or {}
+        metadata = dict(file_metadata or {})
+        metadata.update({
+            key: value for key, value in ((status or {}).get("metadata", {}) or {}).items()
+            if value not in (None, "")
+        })
+        self.audio_metadata = metadata
         self.audio_title = str(metadata.get("title") or self.audio_title)
         record["title"] = self.audio_title
+        self.state["last_opened_audiobook_title"] = self.audio_title
+        self.audio_toolbar_label.configure(text=self.audio_title)
         self.title(f"{self.audio_title} — {APP_NAME} v{APP_VERSION}")
         self.book_label.configure(text=self.audio_title)
         self.heading.pack_forget()
@@ -1763,6 +1783,7 @@ class Reader(tk.Tk):
                 self.audio_speed_var.set(f"{float(speed):g}×")
             except (TypeError, ValueError, OverflowError):
                 pass
+        self._refresh_resume_ui()
         self._audio_update_tick(status)
 
     def _show_audio_cover(self, cover_bytes):
@@ -2004,37 +2025,8 @@ class Reader(tk.Tk):
         self.audio_time_label.configure(text="Stopped · ready to play from the beginning")
 
     def show_reader_screen(self):
-        if self.audio_is_active:
-            self._save_audio_position(self._last_audio_status)
-            if self.audio_worker:
-                self.audio_worker.submit("pause", self._audio_load_token)
-            self.audio_is_active = False
-        if self.audio_tick_id:
-            try:
-                self.after_cancel(self.audio_tick_id)
-            except tk.TclError:
-                pass
-            self.audio_tick_id = None
-        self.audio_screen.pack_forget()
-        if self.book:
-            # Returning to the EPUB screen makes that book the active item
-            # again; keep audiobook progress separately without overriding it.
-            self.state["last_opened_item"] = {
-                "type": "epub", "path": self.book.path, "title": self.book.title
-            }
-            self.resume_button.configure(
-                text="Resume last book", command=self.resume_last_book,
-                state=tk.NORMAL,
-            )
-            self.book_label.configure(text=self.book.title)
-            self.title(f"{self.book.title} — {APP_NAME} v{APP_VERSION}")
-            try:
-                self._save_state()
-            except OSError:
-                pass
-            self._restore_reader_content_layout()
-        else:
-            self._refresh_resume_ui()
+        """Compatibility entry point for returning to the EBook mode."""
+        self.show_ebook_mode()
 
     def open_dialog(self):
         path = filedialog.askopenfilename(
@@ -2721,8 +2713,8 @@ class Reader(tk.Tk):
 
     def resume_last_audiobook(self):
         """Resume the saved audiobook or locate it again without losing history."""
-        item = last_opened_item_info(self.state)
-        if not item or item["type"] != "audiobook":
+        item = last_opened_audiobook_info(self.state)
+        if not item:
             self.open_audiobook_dialog()
             return
         path = item["path"]
@@ -2778,6 +2770,7 @@ class Reader(tk.Tk):
         if restore_from_path:
             restore_book_state_for_moved_file(self.state, restore_from_path, path)
         self.book = book
+        self.show_ebook_mode()
         self.last_book_preview = None
         self.last_book_preview_path = ""
         self.welcome_view.pack_forget()
