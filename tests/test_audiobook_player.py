@@ -174,7 +174,7 @@ class BackendCommandTests(unittest.TestCase):
             ]
             self.assertEqual(
                 load_commands,
-                [["loadfile", path, "replace", "start=245.000"]],
+                [["loadfile", path, "replace", "-1", "start=245.000"]],
             )
 
     def test_seek_rejects_invalid_value(self):
