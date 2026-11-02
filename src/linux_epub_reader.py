@@ -2147,10 +2147,13 @@ class Reader(tk.Tk):
 
     def show_audiobook_mode(self):
         """Show the audiobook controls and contents without starting playback."""
-        self._pause_audio_for_navigation()
+        if self.current_mode != "audiobook":
+            self._pause_audio_for_navigation()
         self._set_app_mode("audiobook")
         self.heading.pack_forget()
         self.text_frame.pack_forget()
+        self.welcome_view.pack_forget()
+        self._populate_audio_contents()
         if self.audio_path:
             self.welcome_view.pack_forget()
             self.audio_screen.pack(fill=tk.BOTH, expand=True)
@@ -2318,8 +2321,14 @@ class Reader(tk.Tk):
                 extra = " · ".join(v for v in (
                     metadata.get("album"), metadata.get("genre"), metadata.get("date")
                 ) if v)
-                saved_position = max(0.0, float(record.get("position", 0) or 0))
-                duration = max(0.0, float(record.get("duration", 0) or 0))
+                try:
+                    saved_position = max(0.0, float(record.get("position", 0) or 0))
+                except (TypeError, ValueError, OverflowError):
+                    saved_position = 0.0
+                try:
+                    duration = max(0.0, float(record.get("duration", 0) or 0))
+                except (TypeError, ValueError, OverflowError):
+                    duration = 0.0
                 progress_text = (
                     f"Saved position: {format_time(saved_position)}"
                     + (f" of {format_time(duration)}" if duration else "")
