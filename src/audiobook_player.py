@@ -608,6 +608,7 @@ class AudioWorker:
             # Take the initial snapshot after restoring the requested position.
             status = self._backend.status()
             cover_bytes = extract_cover_art(path)
+            file_metadata = extract_audiobook_metadata(path)
         except Exception as exc:
             self._active_path = None
             diagnostic = ""
@@ -628,7 +629,8 @@ class AudioWorker:
         self._active_path = path
         self._active_token = token
         self._emit(
-            "loaded", token, path=path, status=status, cover_bytes=cover_bytes
+            "loaded", token, path=path, status=status, cover_bytes=cover_bytes,
+            file_metadata=file_metadata
         )
 
     def _execute(self, action, token, args):
