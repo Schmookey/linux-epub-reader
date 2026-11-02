@@ -35,6 +35,32 @@ class LastOpenedItemTests(unittest.TestCase):
         self.assertEqual(item["path"], os.path.abspath(os.path.expanduser("~/Books/example.m4b")))
         self.assertEqual(item["title"], "Example")
 
+    def test_last_audiobook_is_tracked_independently_of_last_epub(self):
+        state = {
+            "last_opened_item": {"type": "epub", "path": "/books/last-read.epub"},
+            "last_opened_audiobook": "/books/last-listened.m4b",
+            "last_opened_audiobook_title": "Last Listened",
+            "audiobooks": {
+                "/books/last-listened.m4b": {"title": "Saved Audio", "position": 120}
+            },
+        }
+        item = reader.last_opened_audiobook_info(state)
+        self.assertEqual(item["path"], "/books/last-listened.m4b")
+        self.assertEqual(item["title"], "Last Listened")
+        self.assertEqual(item["record"]["position"], 120)
+
+    def test_last_audiobook_can_be_recovered_from_audio_records(self):
+        state = {
+            "last_opened_item": {"type": "epub", "path": "/books/read.epub"},
+            "audiobooks": {
+                "/books/old.m4b": {"title": "Old"},
+                "/books/new.m4b": {"title": "New"},
+            },
+        }
+        item = reader.last_opened_audiobook_info(state)
+        self.assertEqual(item["path"], "/books/new.m4b")
+        self.assertEqual(item["title"], "New")
+
     def test_valid_epub_item_is_returned(self):
         item = reader.last_opened_item_info({
             "last_opened_item": {"type": "epub", "path": "/books/example.epub"}
