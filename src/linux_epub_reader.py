@@ -2055,44 +2055,401 @@ class Reader(tk.Tk):
         messagebox.showinfo(title, message)
 
     def _refresh_resume_ui(self):
-        """Keep the resume action aligned with the most recently opened item."""
-        item = last_opened_item_info(self.state)
-        if item and item["type"] == "audiobook":
-            path, title = item["path"], item["title"]
-            available = os.path.isfile(path)
-            self._populate_audio_contents()
-            self.resume_button.configure(
-                text="Resume last audiobook" if available else "Locate last audiobook…",
-                command=self.resume_last_audiobook,
-                state=tk.NORMAL,
+        """Refresh the separate EPUB and audiobook resume actions."""
+        book_path, book_title, _inferred = last_opened_book_info(self.state)
+        book_available = bool(book_path and os.path.isfile(book_path))
+        self.resume_button.configure(
+            text=("Resume last book" if book_available else "Locate last book…")
+            if book_path else "Resume last book",
+            command=self.resume_last_book,
+            state=tk.NORMAL if book_path else tk.DISABLED,
+        )
+
+        audio_item = last_opened_audiobook_info(self.state)
+        audio_path = audio_item["path"] if audio_item else ""
+        audio_available = bool(audio_path and os.path.isfile(audio_path))
+        self.audio_resume_button.configure(
+            text=("Resume last audiobook" if audio_available else "Locate last audiobook…")
+            if audio_path else "Resume last audiobook",
+            command=self.resume_last_audiobook,
+            state=tk.NORMAL if audio_path else tk.DISABLED,
+        )
+        self.audio_toolbar_label.configure(
+            text=audio_item["title"] if audio_item else "No audiobook open"
+        )
+        if self.current_mode == "home":
+            self._show_home_dashboard()
+        elif self.current_mode == "ebook" and self.book is None:
+            self._show_ebook_welcome()
+        elif self.current_mode == "audiobook" and not self.audio_path:
+            self._show_audiobook_mode_welcome()
+
+    def _set_app_mode(self, mode):
+        """Switch the global mode, contextual toolbar and contents layout."""
+        if mode not in ("home", "ebook", "audiobook"):
+            return
+        self.current_mode = mode
+        if mode == "home":
+            self.toolbar.pack_forget()
+            self.left.grid_remove()
+            self.panes.grid_columnconfigure(0, weight=0, minsize=0)
+            self.right.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        else:
+            self.left.grid()
+            self.panes.grid_columnconfigure(0, weight=0, minsize=self.sidebar_target_width)
+            self.right.grid(row=0, column=1, columnspan=1, sticky="nsew")
+            if self.toolbar.winfo_manager() != "pack":
+                self.toolbar.pack(fill=tk.X, after=self.modebar)
+            self.ebook_toolbar.pack_forget()
+            self.audiobook_toolbar.pack_forget()
+            if mode == "ebook":
+                self.ebook_toolbar.pack(fill=tk.X)
+            else:
+                self.audiobook_toolbar.pack(fill=tk.X)
+
+        active_style = "ModeActive.TButton"
+        normal_style = "TButton"
+        self.home_mode_button.configure(style=active_style if mode == "home" else normal_style)
+        self.ebook_mode_button.configure(style=active_style if mode == "ebook" else normal_style)
+        self.audiobook_mode_button.configure(style=active_style if mode == "audiobook" else normal_style)
+
+    def _pause_audio_for_navigation(self):
+        """Save and pause an active audiobook when leaving its focused screen."""
+        if self.audio_is_active:
+            self._save_audio_position(self._last_audio_status)
+            if self.audio_worker:
+                self.audio_worker.submit("pause", self._audio_load_token)
+            self.audio_is_active = False
+        if self.audio_tick_id:
+            try:
+                self.after_cancel(self.audio_tick_id)
+            except tk.TclError:
+                pass
+            self.audio_tick_id = None
+
+    def show_home_screen(self):
+        """Show the paired last-read and last-listened dashboard."""
+        self._pause_audio_for_navigation()
+        self._set_app_mode("home")
+        self.heading.pack_forget()
+        self.text_frame.pack_forget()
+        self.audio_screen.pack_forget()
+        self._show_home_dashboard()
+        self.status.configure(text="Welcome to Linux EPUB Reader.")
+        self.progress.configure(value=0)
+        self.progress_percent.configure(text="")
+
+    def show_ebook_mode(self):
+        """Show the familiar EPUB menu, contents panel and reading area."""
+        self._pause_audio_for_navigation()
+        self._set_app_mode("ebook")
+        self.audio_screen.pack_forget()
+        self.welcome_view.pack_forget()
+        if self.book is not None:
+            self._restore_reader_content_layout()
+            if not self.is_fullscreen:
+                self._ensure_toc_left()
+            self.status.configure(text=f"Reading: {self.book.title}")
+        else:
+            self._show_ebook_welcome()
+
+    def show_audiobook_mode(self):
+        """Show the audiobook controls and contents without starting playback."""
+        self._pause_audio_for_navigation()
+        self._set_app_mode("audiobook")
+        self.heading.pack_forget()
+        self.text_frame.pack_forget()
+        if self.audio_path:
+            self.welcome_view.pack_forget()
+            self.audio_screen.pack(fill=tk.BOTH, expand=True)
+            self.audio_is_active = True
+            self.status.configure(text=f"Audiobook ready: {self.audio_title}")
+        else:
+            self.audio_screen.pack_forget()
+            self._show_audiobook_mode_welcome()
+
+    def _show_ebook_welcome(self):
+        """Show the last EPUB details in the EBook mode when no book is open."""
+        path, title, inferred = last_opened_book_info(self.state)
+        available = bool(path and os.path.isfile(path))
+        preview = None
+        self.last_book_preview_error = ""
+        if available:
+            try:
+                preview = EPUBBook(path)
+            except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
+                self.last_book_preview_error = str(exc)
+        self.last_book_preview = preview
+        self.last_book_preview_path = path
+        self._show_welcome_panel(path, title, inferred, preview)
+
+    def _show_home_dashboard(self):
+        """Render independent last-read and last-listened cards side by side."""
+        self.heading.pack_forget()
+        self.text_frame.pack_forget()
+        self.audio_screen.pack_forget()
+        self.welcome_view.pack(fill=tk.BOTH, expand=True)
+        for child in self.welcome_view.winfo_children():
+            child.destroy()
+        self._home_cover_photos = []
+
+        header = tk.Frame(self.welcome_view, bg=APP_BG)
+        header.pack(fill=tk.X, padx=18, pady=(14, 10))
+        tk.Label(
+            header, text="YOUR LIBRARY", bg=APP_BG, fg=MINT_GREEN,
+            font=("Sans", 9, "bold"), anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            header, text="Pick up where you left off",
+            bg=APP_BG, fg=DEFAULT_FG, font=(FONT_NAME, 18, "bold"), anchor="w",
+        ).pack(anchor="w", pady=(3, 0))
+
+        book_path, book_title, _inferred = last_opened_book_info(self.state)
+        audio_item = last_opened_audiobook_info(self.state)
+        has_book = bool(book_path)
+        has_audio = bool(audio_item)
+        if not has_book and not has_audio:
+            welcome = tk.Frame(
+                self.welcome_view, bg=PANEL_BG, highlightthickness=1,
+                highlightbackground=BORDER, bd=0,
             )
-            if self.book is None:
-                self.last_book_preview = None
-                self.last_book_preview_path = ""
-                self.last_book_preview_error = ""
-                self._show_audiobook_welcome_panel(path, title, available)
+            welcome.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
+            tk.Label(
+                welcome, text=WELCOME_TEXT, bg=PANEL_BG, fg=DEFAULT_FG,
+                font=(FONT_NAME, 11), justify=tk.LEFT, anchor="nw",
+                wraplength=780,
+            ).pack(fill=tk.BOTH, expand=True, padx=26, pady=28)
             return
 
-        if item and item["type"] == "epub":
-            path, title, inferred = item["path"], item["title"], False
-        else:
-            path, title, inferred = last_opened_book_info(self.state)
-        available = bool(path and os.path.isfile(path))
-        self.resume_button.configure(
-            text=("Resume last book" if available else "Locate last book…") if path else "Resume last book",
-            command=self.resume_last_book,
-            state=tk.NORMAL if path else tk.DISABLED,
+        cards = tk.Frame(self.welcome_view, bg=APP_BG)
+        cards.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 10))
+        cards.grid_columnconfigure(0, weight=1, uniform="resume")
+        cards.grid_columnconfigure(1, weight=1, uniform="resume")
+        cards.grid_rowconfigure(0, weight=1)
+        self._build_home_resume_card(
+            cards, "ebook", book_path, book_title, column=0
         )
-        if self.book is None:
-            self.last_book_preview = None
-            self.last_book_preview_path = path
-            self.last_book_preview_error = ""
-            if available:
-                try:
-                    self.last_book_preview = EPUBBook(path)
-                except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
-                    self.last_book_preview_error = str(exc)
-            self._show_welcome_panel(path, title, inferred, self.last_book_preview)
+        self._build_home_resume_card(
+            cards, "audiobook",
+            audio_item["path"] if audio_item else "",
+            audio_item["title"] if audio_item else "",
+            column=1,
+        )
+
+    def _build_home_resume_card(self, parent, media_type, path, title, column):
+        """Build one dashboard card from local publication metadata."""
+        is_audio = media_type == "audiobook"
+        heading = "LAST LISTENED" if is_audio else "LAST READ"
+        available = bool(path and os.path.isfile(path))
+        card = tk.Frame(
+            parent, bg=PANEL_BG, highlightthickness=1,
+            highlightbackground=BORDER, bd=0,
+        )
+        card.grid(row=0, column=column, sticky="nsew", padx=5, pady=4)
+        tk.Label(
+            card, text=heading, bg=PANEL_BG, fg=MINT_GREEN,
+            font=("Sans", 9, "bold"), anchor="w",
+        ).pack(fill=tk.X, padx=16, pady=(14, 8))
+
+        body = tk.Frame(card, bg=PANEL_BG)
+        body.pack(fill=tk.BOTH, expand=True, padx=14)
+        cover_box = tk.Frame(
+            body, bg=APP_BG, highlightthickness=1, highlightbackground=BORDER,
+            width=112, height=160,
+        )
+        cover_box.pack(side=tk.LEFT, anchor="n", padx=(0, 14))
+        cover_box.pack_propagate(False)
+        details = tk.Frame(body, bg=PANEL_BG)
+        details.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        cover_bytes = None
+        metadata = {}
+        publication = None
+        record = {}
+        error = ""
+        if available:
+            try:
+                if is_audio:
+                    cover_bytes = extract_cover_art(path)
+                    metadata = extract_audiobook_metadata(path)
+                    record = audiobook_record(self.state, path)
+                    title = metadata.get("title") or record.get("title") or title
+                else:
+                    publication = EPUBBook(path)
+                    cover_bytes = publication.cover_bytes
+                    title = publication.title or title
+            except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
+                error = str(exc)
+
+        photo = self._create_cover_photo(cover_bytes, (108, 156)) if cover_bytes else None
+        if photo is not None:
+            self._home_cover_photos.append(photo)
+            tk.Label(cover_box, image=photo, bg=APP_BG, bd=0).pack(expand=True)
+        else:
+            tk.Label(
+                cover_box, text="AUDIOBOOK" if is_audio else "EBOOK",
+                bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 10, "bold"),
+                justify=tk.CENTER,
+            ).pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            details, text=title or (os.path.basename(path) if path else "No book yet"),
+            bg=PANEL_BG, fg=DEFAULT_FG, font=(FONT_NAME, 13, "bold"),
+            justify=tk.LEFT, anchor="w", wraplength=270,
+        ).pack(fill=tk.X, anchor="w")
+        if not path:
+            description = "Open an EPUB to start your reading history." if not is_audio else (
+                "Open an M4B audiobook to start your listening history."
+            )
+            tk.Label(
+                details, text=description, bg=PANEL_BG, fg=MUTED_TEXT,
+                font=(FONT_NAME, 9), justify=tk.LEFT, anchor="nw",
+                wraplength=270,
+            ).pack(fill=tk.X, pady=(8, 0))
+        elif not available:
+            tk.Label(
+                details,
+                text="This file is not at its saved location. Use Locate to choose it again; your saved position will be retained.",
+                bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 9),
+                justify=tk.LEFT, anchor="w", wraplength=270,
+            ).pack(fill=tk.X, pady=(7, 0))
+        elif error:
+            tk.Label(
+                details, text=f"File metadata could not be read: {error}",
+                bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 9),
+                justify=tk.LEFT, anchor="w", wraplength=270,
+            ).pack(fill=tk.X, pady=(7, 0))
+        else:
+            if is_audio:
+                author = metadata.get("artist") or metadata.get("album_artist") or metadata.get("composer") or "Author not supplied"
+                description = metadata.get("description") or "Description not supplied in the audiobook metadata."
+                extra = " · ".join(v for v in (
+                    metadata.get("album"), metadata.get("genre"), metadata.get("date")
+                ) if v)
+                saved_position = max(0.0, float(record.get("position", 0) or 0))
+                duration = max(0.0, float(record.get("duration", 0) or 0))
+                progress_text = (
+                    f"Saved position: {format_time(saved_position)}"
+                    + (f" of {format_time(duration)}" if duration else "")
+                )
+            else:
+                author = publication.author or "Author not supplied"
+                description = publication.description or "Description not supplied in the EPUB metadata."
+                extra = " · ".join(v for v in (
+                    publication.publisher, publication.date, publication.language
+                ) if v)
+                summary = saved_book_summary(self.state, path, publication)
+                progress_text = (
+                    f"Saved place: Chapter {summary['chapter_number']} of "
+                    f"{summary['chapter_count']} · {summary['overall_percent']}% complete"
+                )
+            tk.Label(
+                details, text=author, bg=PANEL_BG, fg=MUTED_TEXT,
+                font=(FONT_NAME, 9), justify=tk.LEFT, anchor="w",
+                wraplength=270,
+            ).pack(fill=tk.X, pady=(4, 2))
+            if extra:
+                tk.Label(
+                    details, text=extra, bg=PANEL_BG, fg=MUTED_TEXT,
+                    font=("Sans", 8), justify=tk.LEFT, anchor="w",
+                    wraplength=270,
+                ).pack(fill=tk.X, pady=(0, 5))
+            desc = tk.Text(
+                details, height=5, wrap=tk.WORD, font=(FONT_NAME, 9),
+                bg=APP_BG, fg=DEFAULT_FG, insertbackground=DEFAULT_FG,
+                relief=tk.FLAT, borderwidth=0, highlightthickness=0,
+                padx=7, pady=6,
+            )
+            desc.pack(fill=tk.BOTH, expand=True, pady=(2, 6))
+            desc.insert("1.0", description)
+            desc.configure(state=tk.DISABLED)
+            tk.Label(
+                details, text=progress_text, bg=PANEL_BG, fg=MINT_GREEN,
+                font=("Sans", 8, "bold"), justify=tk.LEFT, anchor="w",
+                wraplength=270,
+            ).pack(fill=tk.X, pady=(0, 4))
+
+        actions = tk.Frame(card, bg=PANEL_BG)
+        actions.pack(fill=tk.X, padx=14, pady=(10, 14))
+        if path:
+            command = self.resume_last_audiobook if is_audio else self.resume_last_book
+            tk.Button(
+                actions, text=("Resume listening" if is_audio else "Resume reading")
+                if available else "Locate file…",
+                command=command, bg=MINT_GREEN, fg=APP_BG,
+                activebackground="#9BDC59", activeforeground=APP_BG,
+                relief=tk.FLAT, borderwidth=0, font=("Sans", 9, "bold"),
+                padx=13, pady=7, cursor="hand2",
+            ).pack(side=tk.LEFT)
+        tk.Button(
+            actions, text=("Open audiobook…" if is_audio else "Open EBook…"),
+            command=self.open_audiobook_dialog if is_audio else self.open_dialog,
+            bg="#30343A", fg=DEFAULT_FG, activebackground="#3B4148",
+            activeforeground=DEFAULT_FG, relief=tk.FLAT, borderwidth=0,
+            font=("Sans", 9), padx=12, pady=7, cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+    def _show_audiobook_mode_welcome(self):
+        """Show a metadata-led prompt when Audiobook mode has no active player."""
+        item = last_opened_audiobook_info(self.state)
+        path = item["path"] if item else ""
+        title = item["title"] if item else ""
+        self.welcome_view.pack(fill=tk.BOTH, expand=True)
+        for child in self.welcome_view.winfo_children():
+            child.destroy()
+        self._home_cover_photos = []
+        card = tk.Frame(
+            self.welcome_view, bg=PANEL_BG, highlightthickness=1,
+            highlightbackground=BORDER, bd=0,
+        )
+        card.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        tk.Label(
+            card, text="AUDIOBOOK LIBRARY", bg=PANEL_BG, fg=MINT_GREEN,
+            font=("Sans", 9, "bold"), anchor="w",
+        ).pack(fill=tk.X, padx=22, pady=(20, 7))
+        tk.Label(
+            card, text=title or "Choose an audiobook",
+            bg=PANEL_BG, fg=DEFAULT_FG, font=(FONT_NAME, 18, "bold"),
+            anchor="w", wraplength=720,
+        ).pack(fill=tk.X, padx=22)
+        message = (
+            "Your last audiobook is ready. Resume listening to return to your saved position. Playback will remain paused until you press Play."
+            if path and os.path.isfile(path) else
+            "Open a local, DRM-free M4B audiobook. Its embedded chapters, cover artwork and available descriptive metadata will appear here."
+        )
+        tk.Label(
+            card, text=message, bg=PANEL_BG, fg=MUTED_TEXT,
+            font=(FONT_NAME, 10), anchor="w", justify=tk.LEFT,
+            wraplength=720,
+        ).pack(fill=tk.X, padx=22, pady=(10, 14))
+        if path and os.path.isfile(path):
+            metadata = extract_audiobook_metadata(path)
+            cover = extract_cover_art(path)
+            photo = self._create_cover_photo(cover, (170, 230)) if cover else None
+            if photo:
+                self._home_cover_photos.append(photo)
+                tk.Label(card, image=photo, bg=PANEL_BG).pack(anchor="w", padx=22, pady=(0, 10))
+            if metadata.get("artist"):
+                tk.Label(
+                    card, text=metadata["artist"], bg=PANEL_BG,
+                    fg=MUTED_TEXT, font=(FONT_NAME, 10),
+                ).pack(anchor="w", padx=22, pady=(0, 5))
+            if metadata.get("description"):
+                tk.Label(
+                    card, text=metadata["description"], bg=PANEL_BG,
+                    fg=DEFAULT_FG, font=(FONT_NAME, 9), justify=tk.LEFT,
+                    anchor="w", wraplength=720,
+                ).pack(fill=tk.X, padx=22, pady=(0, 10))
+        actions = tk.Frame(card, bg=PANEL_BG)
+        actions.pack(anchor="w", padx=22, pady=(0, 20))
+        if path:
+            ttk.Button(
+                actions, text="Resume listening" if os.path.isfile(path) else "Locate audiobook…",
+                command=self.resume_last_audiobook,
+            ).pack(side=tk.LEFT)
+        ttk.Button(
+            actions, text="Open audiobook…", command=self.open_audiobook_dialog,
+        ).pack(side=tk.LEFT, padx=(9, 0))
 
     def _show_audiobook_welcome_panel(self, path, title, available):
         """Show a simple welcome-back card for the most recently used audiobook."""
