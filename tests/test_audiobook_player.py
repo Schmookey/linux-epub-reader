@@ -160,6 +160,17 @@ class BackendCommandTests(unittest.TestCase):
         backend.seek(-10)
         self.assertEqual(calls[-1]["command"], ["seek", 0.0, "absolute", "exact"])
 
+    def test_load_applies_resume_offset_as_loadfile_option(self):
+        backend, calls = self.make_backend()
+        backend.start = lambda: None
+        backend.status = lambda: {"duration": 1000.0, "time_pos": 245.0, "paused": True}
+        backend.load("/tmp/book.m4b", start_position=245.0)
+        load_commands = [item["command"] for item in calls if item.get("command", [None])[0] == "loadfile"]
+        self.assertEqual(
+            load_commands,
+            [["loadfile", "/tmp/book.m4b", "replace", "start=245.000"]],
+        )
+
     def test_seek_rejects_invalid_value(self):
         backend, _calls = self.make_backend()
         with self.assertRaises(audio.AudiobookError):
