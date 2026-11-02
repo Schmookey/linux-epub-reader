@@ -71,6 +71,33 @@ class AudiobookHelpersTests(unittest.TestCase):
             self.assertIsNone(audio.extract_cover_art(path))
 
 
+    def test_extract_audiobook_metadata_reads_title_artist_and_description(self):
+        def atom(kind, payload):
+            return (len(payload) + 8).to_bytes(4, "big") + kind + payload
+
+        def tagged(kind, value):
+            data = atom(b"data", (1).to_bytes(4, "big") + bytes(4) + value.encode("utf-8"))
+            return atom(kind, data)
+
+        ilst = atom(
+            b"ilst",
+            tagged(bytes((0xA9,)) + b"nam", "The Long Way Home")
+            + tagged(bytes((0xA9,)) + b"ART", "A. N. Author")
+            + tagged(b"desc", "A journey across the northern coast."),
+        )
+        meta = atom(b"meta", bytes(4) + ilst)
+        udta = atom(b"udta", meta)
+        moov = atom(b"moov", udta)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "metadata.m4b")
+            Path(path).write_bytes(moov)
+            metadata = audio.extract_audiobook_metadata(path)
+
+        self.assertEqual(metadata["title"], "The Long Way Home")
+        self.assertEqual(metadata["artist"], "A. N. Author")
+        self.assertEqual(metadata["description"], "A journey across the northern coast.")
+
+
 class IPCProtocolTests(unittest.TestCase):
     def test_persistent_connection_ignores_events_and_matches_command_replies(self):
         import json
