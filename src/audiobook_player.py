@@ -94,7 +94,7 @@ def _decode_mp4_metadata_value(value):
         return ""
     for encoding in ("utf-8-sig", "utf-16", "utf-16-be"):
         try:
-            decoded = value.decode(encoding).strip("\\x00\\ufeff ")
+            decoded = value.decode(encoding).strip("\x00\ufeff ")
             if decoded:
                 return " ".join("".join(
                     character if character.isprintable() else " "
