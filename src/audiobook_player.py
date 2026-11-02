@@ -601,7 +601,34 @@ class AudioWorker:
             if chapter_index is not None:
                 self._backend.select_chapter(chapter_index)
             elif restore_position and float(restore_position) > 0:
-                self._backend.seek(float(restore_position))
+                # mpv can acknowledge an exact seek before its time-pos property
+                # reflects the new location. Wait for that property before
+                # publishing "loaded", otherwise the UI may save the stale
+                # beginning position over the user's resume point.
+                duration = max(0.0, float(status.get("duration") or 0.0))
+                target = max(0.0, float(restore_position))
+                if duration > 0:
+                    target = min(target, max(0.0, duration - 0.25))
+                self._backend.seek(target)
+                deadline = time.monotonic() + max(
+                    3.0, float(getattr(self._backend, "startup_timeout", 3.0))
+                )
+                restored = False
+                while time.monotonic() < deadline:
+                    position_status = self._backend.status(include_details=False)
+                    actual = position_status.get("time_pos")
+                    try:
+                        if actual is not None and abs(float(actual) - target) <= 1.0:
+                            restored = True
+                            break
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+                    time.sleep(0.05)
+                if not restored:
+                    raise AudiobookError(
+                        "The audiobook opened, but its saved listening position "
+                        "could not be restored. The saved position has been kept."
+                    )
             # Preserve the player's current controls when switching audiobooks.
             self._backend.set_volume(volume)
             self._backend.set_speed(speed)
