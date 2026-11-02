@@ -129,6 +129,7 @@ jobs:
           ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -f ffmetadata -i "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta" -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b"
           flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
           import os
+          import queue
           import sys
           import time
           sys.path.insert(0, "/app/lib/linux-epub-reader")
@@ -167,8 +168,19 @@ jobs:
           )
           try:
               assert worker.submit("open", 21, path, 0.0, None, 70.0, 1.0)
-              loaded = worker.events.get(timeout=10)
-              assert loaded["type"] == "loaded", loaded
+              deadline = time.monotonic() + 10
+              loaded = None
+              while time.monotonic() < deadline:
+                  try:
+                      event = worker.events.get(timeout=max(0.1, deadline - time.monotonic()))
+                  except queue.Empty:
+                      break
+                  if event.get("type") == "loaded":
+                      loaded = event
+                      break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert loaded is not None, "AudioWorker did not report loaded after open"
               assert loaded["token"] == 21, loaded
               assert float(loaded["status"]["duration"]) > 5, loaded
               assert worker.submit("play", 21)
