@@ -1955,7 +1955,7 @@ class Reader(tk.Tk):
         self.audio_worker.submit("skip", self._audio_load_token, seconds)
 
     def _audio_seek_preview(self, value):
-        if self.audio_seek.instate(["!disabled"]):
+        if self.audio_seek.cget("state") != tk.DISABLED:
             self.audio_time_label.configure(text=f"Seek to {format_time(value)}")
 
     def _audio_seek_start(self, _event=None):
