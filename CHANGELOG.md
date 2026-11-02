@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.15-1 — Home dashboard and reading modes
+
+- Add permanent Home, EBook and Audiobook navigation at the top of the application, with a focused toolbar for the selected mode.
+- Add a Home dashboard with separate last-read EPUB and last-listened M4B cards, showing locally embedded cover art, title, author/artist, description and saved position when metadata is available.
+- Keep the most recently read EPUB and most recently listened audiobook independently in local state, so switching media types does not replace the other Home card.
+- Make the EBook mode show its existing reading toolbar, Contents panel and reading area; make Audiobook mode show its audiobook toolbar, chapter Contents panel and player without autoplay.
+- Read common descriptive tags and cover art directly from local M4B files; no network lookup or scraping service is used.
+- Keep Resume actions tied to each format's separately saved chapter or listening position.
+
+
 ## 0.13.14-1 — Audiobook control responsiveness and navigation
 
 - Reduce routine MPV status polling to the live playback position and pause state, leaving the audio worker available to process transport controls promptly.
