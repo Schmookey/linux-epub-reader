@@ -1639,16 +1639,8 @@ class Reader(tk.Tk):
             )
             return
 
-        if self.audio_tick_id:
-            try:
-                self.after_cancel(self.audio_tick_id)
-            except tk.TclError:
-                pass
-            self.audio_tick_id = None
-        if self.audio_path and self._last_audio_status:
-            self._save_audio_position(self._last_audio_status)
-
-        self.show_audiobook_mode()
+        # Capture the requested resume point before any navigation/save callback
+        # can write an older player snapshot back over the Home card's value.
         record = audiobook_record(self.state, path) if resume else {}
         try:
             restore_position = (
@@ -1657,6 +1649,21 @@ class Reader(tk.Tk):
             )
         except (TypeError, ValueError, OverflowError):
             restore_position = 0.0
+
+        if self.audio_tick_id:
+            try:
+                self.after_cancel(self.audio_tick_id)
+            except tk.TclError:
+                pass
+            self.audio_tick_id = None
+        # Save a different audiobook before switching, but never let a stale
+        # snapshot of this same file overwrite the position being resumed.
+        if self.audio_path and self.audio_path != path and self._last_audio_status:
+            self._save_audio_position(self._last_audio_status)
+        if self.audio_path == path and resume:
+            self.audio_is_active = False
+
+        self.show_audiobook_mode()
 
         self._audio_load_token += 1
         token = self._audio_load_token
