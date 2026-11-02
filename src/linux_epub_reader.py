@@ -1873,7 +1873,10 @@ class Reader(tk.Tk):
             left_width = self.left.winfo_width()
             if left_width <= 1:
                 left_width = self.sidebar_target_width
-            tree_width = max(170, int(left_width) - 28)
+            # Keep the audiobook Contents column at the same width as the
+            # reader's fixed sidebar. Chapter labels wrap inside the column;
+            # their length must never resize the application layout.
+            tree_width = max(165, int(self.sidebar_target_width) - 72)
             font = tkfont.Font(root=self, font=("Sans", 10))
             text_width = max(105, tree_width - 58)
             max_lines = 1
@@ -1888,7 +1891,15 @@ class Reader(tk.Tk):
                 "Treeview", rowheight=max(34, line_height * max_lines + 12)
             )
             self.toc_tree.column(
-                "#0", width=tree_width, minwidth=tree_width, stretch=True
+                "#0", width=tree_width, minwidth=tree_width, stretch=False
+            )
+            self.left.configure(width=self.sidebar_target_width)
+            self.panes.grid_columnconfigure(
+                0,
+                minsize=sidebar_column_minimum(
+                    self.sidebar_visible, self.is_fullscreen, self.sidebar_target_width
+                ),
+                weight=0,
             )
         except (tk.TclError, ValueError, TypeError):
             pass
