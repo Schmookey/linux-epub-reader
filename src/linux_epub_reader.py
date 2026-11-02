@@ -1743,7 +1743,7 @@ class Reader(tk.Tk):
         self.state["last_opened_item"] = {
             "type": "audiobook", "path": path, "title": self.audio_title
         }
-        self.resume_button.configure(
+        self.audio_resume_button.configure(
             text="Resume last audiobook", command=self.resume_last_audiobook,
             state=tk.NORMAL,
         )
@@ -1762,7 +1762,6 @@ class Reader(tk.Tk):
         self.state["last_opened_audiobook_title"] = self.audio_title
         self.audio_toolbar_label.configure(text=self.audio_title)
         self.title(f"{self.audio_title} — {APP_NAME} v{APP_VERSION}")
-        self.book_label.configure(text=self.audio_title)
         self.heading.pack_forget()
         self.text_frame.pack_forget()
         self.welcome_view.pack_forget()
@@ -1813,6 +1812,10 @@ class Reader(tk.Tk):
         self._audio_toc_entries = []
         records = audiobook_records(self.state)
         paths = list(records)
+        if not paths:
+            self.toc_tree.insert("", tk.END, text="Open an audiobook to view its chapters")
+            self._fit_audio_sidebar()
+            return
         if self.audio_path and self.audio_path in paths:
             paths.remove(self.audio_path)
             paths.insert(0, self.audio_path)
@@ -2083,6 +2086,7 @@ class Reader(tk.Tk):
         self.current_mode = mode
         if mode == "home":
             self.toolbar.pack_forget()
+            self.sidebar_reopen_toggle.place_forget()
             self.left.grid_remove()
             self.panes.grid_columnconfigure(0, weight=0, minsize=0)
             self.right.grid(row=0, column=0, columnspan=2, sticky="nsew")
@@ -2176,6 +2180,7 @@ class Reader(tk.Tk):
                 self.last_book_preview_error = str(exc)
         self.last_book_preview = preview
         self.last_book_preview_path = path
+        self._populate_toc()
         self._show_welcome_panel(path, title, inferred, preview)
 
     def _show_home_dashboard(self):
