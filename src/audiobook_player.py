@@ -88,6 +88,87 @@ def _iter_mp4_atoms(handle, start, end):
         cursor += size
 
 
+def _decode_mp4_metadata_value(value):
+    """Decode a bounded iTunes/MP4 metadata value into readable text."""
+    if len(value) > 2 * 1024 * 1024:
+        return ""
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-be"):
+        try:
+            decoded = value.decode(encoding).strip("\\x00\\ufeff ")
+            if decoded:
+                return " ".join("".join(
+                    character if character.isprintable() else " "
+                    for character in decoded
+                ).split())
+        except UnicodeDecodeError:
+            continue
+    return " ".join(value.decode("latin-1", errors="ignore").split())
+
+
+def extract_audiobook_metadata(path):
+    """Read common iTunes/QuickTime tags from a local M4B without launching MPV."""
+    fields = {
+        b"\\xa9nam": "title",
+        b"\\xa9ART": "artist",
+        b"aART": "album_artist",
+        b"\\xa9alb": "album",
+        b"\\xa9day": "date",
+        b"\\xa9gen": "genre",
+        b"\\xa9cmt": "comment",
+        b"desc": "description",
+        b"ldes": "long_description",
+        b"\\xa9wrt": "composer",
+        b"\\xa9grp": "grouping",
+    }
+    containers = {b"moov", b"udta", b"meta", b"ilst"}
+    found = {}
+    try:
+        with open(path, "rb") as handle:
+            size = os.fstat(handle.fileno()).st_size
+            pending = [(0, size, 0)]
+            while pending:
+                start, end, depth = pending.pop()
+                if depth > 12:
+                    continue
+                for kind, payload_start, payload_end in _iter_mp4_atoms(handle, start, end):
+                    field = fields.get(kind)
+                    if field:
+                        for child_kind, child_start, child_end in _iter_mp4_atoms(
+                            handle, payload_start, payload_end
+                        ):
+                            if child_kind != b"data" or child_end - child_start <= 8:
+                                continue
+                            handle.seek(child_start + 8)
+                            raw = handle.read(min(child_end - child_start - 8, 2 * 1024 * 1024 + 1))
+                            value = _decode_mp4_metadata_value(raw)
+                            if value and (field not in found or field == "long_description"):
+                                found[field] = value
+                            break
+                    if kind in containers:
+                        child_start = payload_start + (4 if kind == b"meta" else 0)
+                        if child_start <= payload_end:
+                            pending.append((child_start, payload_end, depth + 1))
+    except (OSError, ValueError, OverflowError):
+        return {}
+
+    description = (
+        found.get("long_description")
+        or found.get("description")
+        or found.get("comment")
+        or ""
+    )
+    return {
+        "title": found.get("title", ""),
+        "artist": found.get("artist", ""),
+        "album_artist": found.get("album_artist", ""),
+        "album": found.get("album", ""),
+        "genre": found.get("genre", ""),
+        "date": found.get("date", ""),
+        "composer": found.get("composer", ""),
+        "description": description,
+    }
+
+
 def extract_cover_art(path, max_bytes=20 * 1024 * 1024):
     """Extract an embedded iTunes/MP4 covr image without loading the whole audiobook."""
     containers = {b"moov", b"udta", b"meta", b"ilst"}
