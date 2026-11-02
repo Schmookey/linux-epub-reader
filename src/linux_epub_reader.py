@@ -1497,6 +1497,18 @@ class Reader(tk.Tk):
         self.audio_seek.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12)
         self.audio_seek.bind("<ButtonPress-1>", self._audio_seek_start)
         self.audio_seek.bind("<ButtonRelease-1>", self._audio_seek_commit)
+        self.audio_chapter_timeline = tk.Canvas(
+            panel, height=22, bg=APP_BG, highlightthickness=0, bd=0, cursor="hand2",
+        )
+        self.audio_chapter_timeline.pack(fill=tk.X, padx=82, pady=(2, 0))
+        self.audio_chapter_timeline.bind(
+            "<Configure>", lambda _event: self._draw_audio_chapter_markers()
+        )
+        self.audio_chapter_timeline.bind("<Button-1>", self._audio_chapter_marker_click)
+        self.audio_chapter_timeline.bind("<Motion>", self._audio_chapter_marker_hover)
+        self.audio_chapter_timeline.bind("<Leave>", self._hide_audio_chapter_tooltip)
+        self._audio_chapter_marker_positions = []
+        self._audio_chapter_tooltip = None
         self.audio_remaining_label = tk.Label(
             seek_row, text="-0:00", bg=APP_BG, fg=MUTED_TEXT, font=("Sans", 10)
         )
@@ -1785,7 +1797,10 @@ class Reader(tk.Tk):
         self.audio_screen.pack(fill=tk.BOTH, expand=True)
         self._refresh_audio_chapters((status or {}).get("chapters", []))
         self._show_audio_cover(cover_bytes)
-        self._populate_audio_contents()
+        self._draw_audio_chapter_markers(
+            (status or {}).get("time_pos"), (status or {}).get("duration"),
+            (status or {}).get("chapter"),
+        )
 
         volume = (status or {}).get("volume")
         if volume is not None:
@@ -1818,7 +1833,7 @@ class Reader(tk.Tk):
             audiobook_display_chapter_title(ch.get("title"), index)
             for index, ch in enumerate(self.audio_chapters)
         ]
-        self._populate_audio_contents()
+        self._draw_audio_chapter_markers()
 
     def _populate_audio_contents(self):
         """Show an audiobook heading and its chapter titles, never numbered file names."""
@@ -1924,6 +1939,83 @@ class Reader(tk.Tk):
     def _audio_chapter_selected(self, _event=None):
         return
 
+    def _draw_audio_chapter_markers(self, position=None, duration=None, active_index=None):
+        """Draw clickable chapter markers at their timestamps on the playback timeline."""
+        canvas = getattr(self, "audio_chapter_timeline", None)
+        if canvas is None or not canvas.winfo_exists():
+            return
+        try:
+            status = self._last_audio_status or {}
+            duration = float(duration if duration is not None else status.get("duration") or 0)
+            if active_index is None:
+                active_index = status.get("chapter")
+            width, height = max(1, canvas.winfo_width()), max(1, canvas.winfo_height())
+            canvas.delete("all")
+            self._audio_chapter_marker_positions = []
+            if duration <= 0 or not self.audio_chapters:
+                return
+            mid = height // 2
+            canvas.create_line(2, mid, width - 2, mid, fill="#41474F", width=3)
+            for index, chapter in enumerate(self.audio_chapters):
+                try:
+                    seconds = max(0.0, float(chapter.get("time", 0)))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if seconds > duration:
+                    continue
+                x = 2 + (width - 4) * min(1.0, seconds / duration)
+                active = index == active_index
+                colour = MINT_GREEN if active else "#A0A8B2"
+                radius = 5 if active else 3
+                canvas.create_line(x, mid - 7, x, mid + 7, fill=colour, width=2)
+                canvas.create_oval(
+                    x-radius, mid-radius, x+radius, mid+radius,
+                    fill=colour, outline="#101316" if active else colour,
+                )
+                self._audio_chapter_marker_positions.append((x, index, seconds))
+        except (tk.TclError, TypeError, ValueError):
+            return
+
+    def _audio_chapter_marker_at(self, x):
+        markers = getattr(self, "_audio_chapter_marker_positions", [])
+        if not markers:
+            return None
+        nearest = min(markers, key=lambda marker: abs(marker[0] - x))
+        return nearest if abs(nearest[0] - x) <= 10 else None
+
+    def _audio_chapter_marker_click(self, event):
+        marker = self._audio_chapter_marker_at(event.x)
+        if marker is not None:
+            self._audio_select_chapter(self.audio_path, marker[1])
+
+    def _audio_chapter_marker_hover(self, event):
+        marker = self._audio_chapter_marker_at(event.x)
+        if marker is None:
+            self._hide_audio_chapter_tooltip()
+            return
+        title = audiobook_display_chapter_title(
+            self.audio_chapters[marker[1]].get("title"), marker[1]
+        )
+        self._hide_audio_chapter_tooltip()
+        tip = tk.Toplevel(self)
+        tip.wm_overrideredirect(True)
+        tip.configure(background="#20252A")
+        tk.Label(
+            tip, text=f"{title} · {format_time(marker[2])}",
+            bg="#20252A", fg=DEFAULT_FG, padx=8, pady=4, font=("Sans", 9),
+        ).pack()
+        tip.geometry(f"+{event.x_root + 12}+{event.y_root - 28}")
+        self._audio_chapter_tooltip = tip
+
+    def _hide_audio_chapter_tooltip(self, _event=None):
+        tip = getattr(self, "_audio_chapter_tooltip", None)
+        if tip is not None:
+            try:
+                tip.destroy()
+            except tk.TclError:
+                pass
+            self._audio_chapter_tooltip = None
+
     def _audio_select_chapter(self, path, index):
         if path != self.audio_path:
             self.open_audiobook(path, resume=True, chapter_index=index)
@@ -2002,6 +2094,7 @@ class Reader(tk.Tk):
                 self.audio_elapsed_label.configure(text=format_time(position))
                 self.audio_remaining_label.configure(text=f"-{format_time(max(0, duration-position))}")
                 self.audio_time_label.configure(text=f"{format_time(position)} elapsed · {format_time(max(0, duration-position))} remaining")
+            self._draw_audio_chapter_markers(position, duration, status.get("chapter"))
             chapter_index = status.get("chapter")
             if isinstance(chapter_index, int) and 0 <= chapter_index < len(self.audio_chapters):
                 self.audio_chapter_title.configure(
@@ -2118,6 +2211,16 @@ class Reader(tk.Tk):
             self.left.grid_remove()
             self.panes.grid_columnconfigure(0, weight=0, minsize=0)
             self.right.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        elif mode == "audiobook":
+            self.left.grid_remove()
+            self.sidebar_reopen_toggle.place_forget()
+            self.panes.grid_columnconfigure(0, weight=0, minsize=0)
+            self.right.grid(row=0, column=0, columnspan=2, sticky="nsew")
+            if self.toolbar.winfo_manager() != "pack":
+                self.toolbar.pack(fill=tk.X, after=self.modebar)
+            self.ebook_toolbar.pack_forget()
+            self.audiobook_toolbar.pack_forget()
+            self.audiobook_toolbar.pack(fill=tk.X)
         else:
             self.left.grid()
             self.panes.grid_columnconfigure(0, weight=0, minsize=self.sidebar_target_width)
@@ -2185,7 +2288,6 @@ class Reader(tk.Tk):
         self.heading.pack_forget()
         self.text_frame.pack_forget()
         self.welcome_view.pack_forget()
-        self._populate_audio_contents()
         if self.audio_path:
             self.welcome_view.pack_forget()
             self.audio_screen.pack(fill=tk.BOTH, expand=True)
