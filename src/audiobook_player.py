@@ -108,17 +108,17 @@ def _decode_mp4_metadata_value(value):
 def extract_audiobook_metadata(path):
     """Read common iTunes/QuickTime tags from a local M4B without launching MPV."""
     fields = {
-        b"\\xa9nam": "title",
-        b"\\xa9ART": "artist",
+        b"\xa9nam": "title",
+        b"\xa9ART": "artist",
         b"aART": "album_artist",
-        b"\\xa9alb": "album",
-        b"\\xa9day": "date",
-        b"\\xa9gen": "genre",
-        b"\\xa9cmt": "comment",
+        b"\xa9alb": "album",
+        b"\xa9day": "date",
+        b"\xa9gen": "genre",
+        b"\xa9cmt": "comment",
         b"desc": "description",
         b"ldes": "long_description",
-        b"\\xa9wrt": "composer",
-        b"\\xa9grp": "grouping",
+        b"\xa9wrt": "composer",
+        b"\xa9grp": "grouping",
     }
     containers = {b"moov", b"udta", b"meta", b"ilst"}
     found = {}
