@@ -2,10 +2,13 @@
 
 ## 0.13.15-1 — Home dashboard and reading modes
 
+- Resolve the Flatpak Preview state directory from its actual runtime home directory rather than a hard-coded home path; preview reading and listening history now survives relaunches.
+- Warn when saved reading or listening progress cannot be written, without deliberately replacing existing state data; keep the warning from appearing repeatedly during the same failed-write sequence.
+
 - Add permanent Home, EBook and Audiobook navigation at the top of the application, with a focused toolbar for the selected mode.
 - Add a Home dashboard with separate last-read EPUB and last-listened M4B cards, showing locally embedded cover art, title, author/artist, description and saved position when metadata is available.
 - Keep the most recently read EPUB and most recently listened audiobook independently in local state, so switching media types does not replace the other Home card.
-- Make the EBook mode show its existing reading toolbar, Contents panel and reading area; make Audiobook mode show its audiobook toolbar, chapter Contents panel and player without autoplay.
+- Make the EBook mode show its existing reading toolbar, Contents panel and reading area; make Audiobook mode show its audiobook toolbar and player without autoplay. The audiobook Contents sidebar is replaced by clickable chapter markers beneath the playback seek slider.
 - Read common descriptive tags and cover art directly from local M4B files; no network lookup or scraping service is used.
 - Keep Resume actions tied to each format's separately saved chapter or listening position.
 
