@@ -229,6 +229,8 @@ class StateSaveWarningTests(unittest.TestCase):
     def _reader_without_gui(self):
         # Exercise state-save failure handling without requiring an X display.
         instance = object.__new__(reader.Reader)
+        instance.tk = mock.Mock()
+        instance.status = mock.Mock()
         instance.state = {"books": {"saved": {"chapter": 2}}}
         instance._state_write_blocked = False
         instance._state_save_warning_shown = False
