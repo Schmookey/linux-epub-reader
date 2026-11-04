@@ -13,7 +13,6 @@ finish-args:
   - --filesystem=home:ro
   # Keep reading-state writes limited to the application's existing state directory.
   - --filesystem=~/.local/share/linux-epub-reader-preview:create
-  - --env=LINUX_EPUB_READER_STATE_DIR=/home/user/.local/share/linux-epub-reader-preview
   - --env=TCL_LIBRARY=/app/lib/tcl9.1
   - --env=TK_LIBRARY=/app/lib/tk9.1
 
