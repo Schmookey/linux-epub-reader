@@ -860,6 +860,7 @@ class Reader(tk.Tk):
         self._state_recovery_backup = None
         self._state_write_blocked = False
         self._state_recovery_message = ""
+        self._state_save_warning_shown = False
         self.state = self._load_state()
         self.hide_fullscreen_hint_var = tk.BooleanVar(
             value=bool(self.state.get("hide_fullscreen_hint", False))
@@ -908,12 +909,44 @@ class Reader(tk.Tk):
         return state
 
     def _save_state(self):
-        if self._state_write_blocked:
-            raise OSError(
-                "Saving is disabled because the original reading-state file "
-                "could not be safely backed up or read."
-            )
-        save_state_file(self.state, STATE_FILE)
+        try:
+            if self._state_write_blocked:
+                raise OSError(
+                    "Saving is disabled because the original reading-state file "
+                    "could not be safely backed up or read."
+                )
+            save_state_file(self.state, STATE_FILE)
+        except OSError as exc:
+            # Callers may continue reading after a failed save, but the user
+            # must know that the latest progress was not persisted.
+            self._report_state_save_failure(exc)
+            raise
+        else:
+            # Allow another warning if a later, separate save fails.
+            self._state_save_warning_shown = False
+
+    def _report_state_save_failure(self, error):
+        """Warn once per run of failed writes without deleting saved history."""
+        if hasattr(self, "status"):
+            try:
+                self.status.configure(
+                    text="Warning: reading and listening progress could not be saved."
+                )
+            except tk.TclError:
+                pass
+        if self._state_save_warning_shown:
+            return
+        self._state_save_warning_shown = True
+        messagebox.showwarning(
+            "Reading progress was not saved",
+            "Linux EPUB Reader could not save your latest reading or listening "
+            "position. Your existing state file has not been deliberately deleted.\n\n"
+            f"Save location: {STATE_FILE}\n"
+            f"Reason: {error}\n\n"
+            "Check the available disk space and directory permissions before "
+            "closing the application.",
+            parent=self,
+        )
 
     def _book_key(self, path):
         return book_state_key(path)
