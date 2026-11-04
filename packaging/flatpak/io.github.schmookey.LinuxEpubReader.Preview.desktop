@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Linux EPUB Reader (Audiobook Preview)
+Comment=Preview local EPUB and M4B audiobook playback
+Exec=linux-epub-reader-preview %f
+Icon=io.github.schmookey.LinuxEpubReader.Preview
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/epub+zip;
+StartupNotify=true

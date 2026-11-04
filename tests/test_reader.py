@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 import unittest
 import zipfile
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import linux_epub_reader as reader
@@ -22,6 +23,86 @@ def make_epub(path):
         archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         for name, data in files.items():
             archive.writestr(name, data)
+
+
+class LastOpenedItemTests(unittest.TestCase):
+    def test_valid_audiobook_item_is_returned_with_absolute_path(self):
+        item = reader.last_opened_item_info({
+            "last_opened_item": {
+                "type": "audiobook", "path": "~/Books/example.m4b", "title": "Example"
+            }
+        })
+        self.assertEqual(item["type"], "audiobook")
+        self.assertEqual(item["path"], os.path.abspath(os.path.expanduser("~/Books/example.m4b")))
+        self.assertEqual(item["title"], "Example")
+
+    def test_last_audiobook_is_tracked_independently_of_last_epub(self):
+        state = {
+            "last_opened_item": {"type": "epub", "path": "/books/last-read.epub"},
+            "last_opened_audiobook": "/books/last-listened.m4b",
+            "last_opened_audiobook_title": "Last Listened",
+            "audiobooks": {
+                "/books/last-listened.m4b": {"title": "Saved Audio", "position": 120}
+            },
+        }
+        item = reader.last_opened_audiobook_info(state)
+        self.assertEqual(item["path"], "/books/last-listened.m4b")
+        self.assertEqual(item["title"], "Last Listened")
+        self.assertEqual(item["record"]["position"], 120)
+
+    def test_last_audiobook_can_be_recovered_from_audio_records(self):
+        state = {
+            "last_opened_item": {"type": "epub", "path": "/books/read.epub"},
+            "audiobooks": {
+                "/books/old.m4b": {"title": "Old"},
+                "/books/new.m4b": {"title": "New"},
+            },
+        }
+        item = reader.last_opened_audiobook_info(state)
+        self.assertEqual(item["path"], "/books/new.m4b")
+        self.assertEqual(item["title"], "New")
+
+    def test_valid_epub_item_is_returned(self):
+        item = reader.last_opened_item_info({
+            "last_opened_item": {"type": "epub", "path": "/books/example.epub"}
+        })
+        self.assertEqual(item, {
+            "type": "epub", "path": "/books/example.epub", "title": "example.epub"
+        })
+
+    def test_invalid_or_legacy_item_is_ignored(self):
+        for value in (
+            None, [], {}, {"type": "mp3", "path": "/books/example.mp3"},
+            {"type": "audiobook", "path": ""}, {"type": "epub", "path": None},
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(reader.last_opened_item_info({"last_opened_item": value}))
+
+    def test_legacy_reading_state_is_not_changed(self):
+        state = {"books": {"old-key": {"chapter": 2}}, "last_opened_book": "/old.epub"}
+        self.assertIsNone(reader.last_opened_item_info(state))
+        self.assertEqual(state["books"]["old-key"]["chapter"], 2)
+        self.assertEqual(state["last_opened_book"], "/old.epub")
+
+
+    def test_malformed_audiobook_progress_field_is_repaired_without_touching_books(self):
+        state = {"books": {"old-key": {"chapter": 2}}, "audiobooks": ["invalid"]}
+        records = reader.audiobook_records(state)
+        self.assertEqual(records, {})
+        self.assertEqual(state["audiobooks"], {})
+        self.assertEqual(state["books"]["old-key"]["chapter"], 2)
+
+
+    def test_malformed_per_book_audio_record_is_repaired_without_touching_other_records(self):
+        state = {
+            "books": {"old-key": {"chapter": 2}},
+            "audiobooks": {"/books/broken.m4b": "invalid", "/books/valid.m4b": {"position": 42}},
+        }
+        record = reader.audiobook_record(state, "/books/broken.m4b")
+        self.assertEqual(record, {})
+        self.assertIs(state["audiobooks"]["/books/broken.m4b"], record)
+        self.assertEqual(state["audiobooks"]["/books/valid.m4b"]["position"], 42)
+        self.assertEqual(state["books"]["old-key"]["chapter"], 2)
 
 
 class ReadingStateFileTests(unittest.TestCase):
@@ -46,6 +127,34 @@ class ReadingStateFileTests(unittest.TestCase):
         self.assertIsNone(backup)
         self.assertFalse(blocked)
         self.assertEqual(message, "")
+
+    def test_audiobook_progress_round_trips_without_changing_epub_reading_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reading_state.json")
+            audiobook_path = os.path.join(directory, "Books", "sample.m4b")
+            original_book_state = {"chapter": 4, "fraction": 0.65, "bookmarks": [{"title": "Keep"}]}
+            state = {
+                "books": {"epub-key": dict(original_book_state)},
+                "last_opened_item": {
+                    "type": "audiobook", "path": audiobook_path, "title": "Sample"
+                },
+                "audiobooks": {
+                    audiobook_path: {
+                        "path": audiobook_path, "title": "Sample",
+                        "position": 1834.5, "duration": 7200.0, "chapter": 7,
+                    }
+                },
+            }
+            reader.save_state_file(state, path)
+            restored, backup, writes_blocked, message = reader.load_state_file(path)
+
+        self.assertIsNone(backup)
+        self.assertFalse(writes_blocked)
+        self.assertEqual(message, "")
+        self.assertEqual(restored["audiobooks"][audiobook_path]["position"], 1834.5)
+        self.assertEqual(restored["audiobooks"][audiobook_path]["chapter"], 7)
+        self.assertEqual(restored["last_opened_item"]["type"], "audiobook")
+        self.assertEqual(restored["books"]["epub-key"], original_book_state)
 
     def test_malformed_json_is_preserved_before_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -114,6 +223,53 @@ class ReadingStateFileTests(unittest.TestCase):
                 preserved = handle.read()
             self.assertFalse(os.path.exists(path + ".tmp"))
         self.assertEqual(preserved, original)
+
+
+class StateSaveWarningTests(unittest.TestCase):
+    def _reader_without_gui(self):
+        # Exercise state-save failure handling without requiring an X display.
+        instance = object.__new__(reader.Reader)
+        instance.tk = mock.Mock()
+        instance.status = mock.Mock()
+        instance.state = {"books": {"saved": {"chapter": 2}}}
+        instance._state_write_blocked = False
+        instance._state_save_warning_shown = False
+        return instance
+
+    def test_failed_save_warns_once_and_preserves_error(self):
+        instance = self._reader_without_gui()
+        with mock.patch.object(reader, "save_state_file", side_effect=OSError("disk full")), \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            with self.assertRaisesRegex(OSError, "disk full"):
+                instance._save_state()
+            with self.assertRaisesRegex(OSError, "disk full"):
+                instance._save_state()
+        warning.assert_called_once()
+        self.assertIn("reading or listening", warning.call_args.args[1])
+        self.assertTrue(instance._state_save_warning_shown)
+
+    def test_warning_rearms_after_a_successful_save(self):
+        instance = self._reader_without_gui()
+        with mock.patch.object(reader, "save_state_file") as save, \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            save.side_effect = [OSError("read-only"), None, OSError("full")]
+            with self.assertRaises(OSError):
+                instance._save_state()
+            instance._save_state()
+            self.assertFalse(instance._state_save_warning_shown)
+            with self.assertRaises(OSError):
+                instance._save_state()
+        self.assertEqual(warning.call_count, 2)
+
+    def test_blocked_recovery_save_warns_without_attempting_a_write(self):
+        instance = self._reader_without_gui()
+        instance._state_write_blocked = True
+        with mock.patch.object(reader, "save_state_file") as save, \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            with self.assertRaisesRegex(OSError, "Saving is disabled"):
+                instance._save_state()
+        save.assert_not_called()
+        warning.assert_called_once()
 
 
 class CoverAndWelcomePanelDataTests(unittest.TestCase):
@@ -396,11 +552,93 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
             method.index("self.toolbar.pack("),
         )
 
+    def test_audiobook_open_is_queued_to_the_single_audio_owner(self):
+        method = self._method_source("open_audiobook", "_poll_audio_load_queue")
+        self.assertIn("self.audio_worker.submit(", method)
+        self.assertNotIn("self.audio_backend.load(path)", method)
+        self.assertNotIn("threading.Thread(", method)
+
+    def test_audiobook_ui_only_consumes_worker_events(self):
+        method = self._method_source("_poll_audio_load_queue", "_finish_audiobook_open")
+        self.assertIn("self.audio_worker.events.get_nowait()", method)
+        self.assertNotIn("self.audio_backend.status()", method)
+        self.assertNotIn("threading.Thread(", method)
+
+    def test_home_resume_captures_saved_position_before_navigation_or_saves(self):
+        method = self._method_source("open_audiobook", "_poll_audio_load_queue")
+        capture = method.index('record = audiobook_record(self.state, path) if resume else {}')
+        navigation = method.index("self.show_audiobook_mode()")
+        queue_open = method.index('"open", token, path, restore_position, chapter_index')
+        self.assertLess(capture, navigation)
+        self.assertLess(navigation, queue_open)
+        self.assertIn('self.audio_path != path and self._last_audio_status', method)
+        self.assertIn('self.audio_path == path and resume', method)
+
+    def test_audiobook_mode_hides_contents_sidebar(self):
+        method = self._method_source("_set_app_mode", "_pause_audio_for_navigation")
+        audiobook_branch = method[method.index('elif mode == "audiobook":'):]
+        self.assertIn("self.left.grid_remove()", audiobook_branch)
+        self.assertIn("self.right.grid(row=0, column=0, columnspan=2", audiobook_branch)
+
+    def test_audiobook_chapters_are_drawn_on_clickable_timeline(self):
+        build = self._method_source("_build_audiobook_screen", "_make_round_audio_button")
+        draw = self._method_source("_draw_audio_chapter_markers", "_audio_chapter_marker_at")
+        click = self._method_source("_audio_chapter_marker_click", "_audio_chapter_marker_hover")
+        self.assertIn("self.audio_chapter_timeline", build)
+        self.assertIn("self._audio_chapter_marker_click", build)
+        self.assertIn("seconds / duration", draw)
+        self.assertIn("self._audio_select_chapter", click)
+
+    def test_playback_controls_are_queued_not_run_on_tk_thread(self):
+        for name, next_name in [
+            ("_audio_play", "_audio_pause"),
+            ("_audio_pause", "_audio_set_volume"),
+            ("_audio_set_volume", "_audio_toggle_mute"),
+            ("_audio_toggle_mute", "_audio_set_speed"),
+            ("_audio_set_speed", "_audio_skip"),
+            ("_audio_skip", "_audio_seek_preview"),
+            ("_audio_seek_commit", "_audio_update_tick"),
+        ]:
+            method = self._method_source(name, next_name)
+            self.assertIn("self.audio_worker.submit(", method, name)
+            self.assertNotIn("self.audio_backend.", method, name)
+
+    def test_audio_progress_saving_uses_a_cached_status_snapshot(self):
+        method = self._method_source("_save_audio_position", "_audio_stop")
+        self.assertIn("self._last_audio_status", method)
+        self.assertNotIn("self.audio_backend.status()", method)
+
+
+class AudiobookDisplayTitleTests(unittest.TestCase):
+    def test_numbered_file_and_track_names_become_chapter_labels(self):
+        self.assertEqual(reader.audiobook_display_chapter_title("001", 0), "Chapter 1")
+        self.assertEqual(reader.audiobook_display_chapter_title("Track 002", 1), "Chapter 2")
+        self.assertEqual(reader.audiobook_display_chapter_title("File 003", 2), "Chapter 3")
+
+    def test_meaningful_embedded_chapter_title_is_preserved(self):
+        self.assertEqual(
+            reader.audiobook_display_chapter_title("001 - The Long Journey Home", 0),
+            "The Long Journey Home",
+        )
+
+    def test_missing_or_generic_title_uses_chapter_number(self):
+        self.assertEqual(reader.audiobook_display_chapter_title("", 4), "Chapter 5")
+        self.assertEqual(reader.audiobook_display_chapter_title("Chapter 0006", 5), "Chapter 6")
+
+    def test_wrapped_chapter_title_keeps_every_word(self):
+        class TestFont:
+            def measure(self, value):
+                return len(value) * 7
+        title = "A Very Long Chapter Name That Must Remain Fully Visible"
+        wrapped = reader.wrap_audio_chapter_title(title, TestFont(), 112)
+        self.assertEqual(" ".join(wrapped.splitlines()), title)
+        self.assertGreater(len(wrapped.splitlines()), 1)
+
 
 class EpubTests(unittest.TestCase):
     def test_application_identity_and_version(self):
         self.assertEqual(reader.APP_NAME, "Linux EPUB Reader")
-        self.assertEqual(reader.APP_VERSION, "0.13.10")
+        self.assertEqual(reader.APP_VERSION, "0.13.15")
 
     def test_epub_chapters_keep_reading_order_and_navigation(self):
         with tempfile.TemporaryDirectory() as directory:

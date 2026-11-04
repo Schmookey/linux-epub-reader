@@ -13,6 +13,7 @@ PKG="linux-epub-reader"
 rm -rf "$PKGROOT"
 install -d "$PKGROOT/DEBIAN" "$PKGROOT/usr/lib/linux-epub-reader/src" "$PKGROOT/usr/bin" "$PKGROOT/usr/share/applications" "$PKGROOT/usr/share/icons/hicolor/scalable/apps" "$PKGROOT/usr/share/doc/$PKG"
 install -m 0644 "$ROOT/src/linux_epub_reader.py" "$PKGROOT/usr/lib/linux-epub-reader/src/linux_epub_reader.py"
+install -m 0644 "$ROOT/src/audiobook_player.py" "$PKGROOT/usr/lib/linux-epub-reader/src/audiobook_player.py"
 install -m 0644 "$ROOT/packaging/debian/copyright" "$PKGROOT/usr/share/doc/$PKG/copyright"
 install -m 0644 "$ROOT/LICENSE" "$PKGROOT/usr/share/doc/$PKG/LICENSE"
 cat > "$PKGROOT/usr/bin/linux-epub-reader" <<'WRAPPER'
@@ -28,7 +29,7 @@ Version: $VERSION
 Section: text
 Priority: optional
 Architecture: all
-Depends: python3, python3-tk, python3-pil
+Depends: python3, python3-tk, python3-pil, mpv
 Maintainer: Linux EPUB Reader contributors
 Description: Local-first dark-mode EPUB reader
  A text-oriented EPUB reader for Linux with continuous chapter scrolling,

@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.13.15-1 — Home dashboard and reading modes
+
+- Resolve the Flatpak Preview state directory from its actual runtime home directory rather than a hard-coded home path; preview reading and listening history now survives relaunches.
+- Warn when saved reading or listening progress cannot be written, without deliberately replacing existing state data; keep the warning from appearing repeatedly during the same failed-write sequence.
+
+- Add permanent Home, EBook and Audiobook navigation at the top of the application, with a focused toolbar for the selected mode.
+- Add a Home dashboard with separate last-read EPUB and last-listened M4B cards, showing locally embedded cover art, title, author/artist, description and saved position when metadata is available.
+- Keep the most recently read EPUB and most recently listened audiobook independently in local state, so switching media types does not replace the other Home card.
+- Make the EBook mode show its existing reading toolbar, Contents panel and reading area; make Audiobook mode show its audiobook toolbar and player without autoplay. The audiobook Contents sidebar is replaced by clickable chapter markers beneath the playback seek slider.
+- Read common descriptive tags and cover art directly from local M4B files; no network lookup or scraping service is used.
+- Keep Resume actions tied to each format's separately saved chapter or listening position.
+
+
+## 0.13.14-1 — Audiobook control responsiveness and navigation
+
+- Reduce routine MPV status polling to the live playback position and pause state, leaving the audio worker available to process transport controls promptly.
+- Report essential MPV status/IPC failures instead of silently presenting a frozen playback position.
+- Execute 30-second skips relative to the latest position read by the MPV-owning worker.
+- Toggle mute on the MPV-owning thread using its latest acknowledged mute state, preventing stale GUI snapshots from reversing rapid clicks.
+- Show visible acknowledgement or errors for playback commands.
+- Keep manual Contents-panel scrolling in place instead of repeatedly jumping back to the playing chapter.
+- Add a real MPV-through-AudioWorker Flatpak integration check for playback position advancement, pause, skip and mute.
+
+## 0.13.13-1 — Single-owner audiobook playback
+
+- Replace the separate audiobook loading and status-monitor threads with one dedicated audio worker that owns MPV for its entire lifetime.
+- Queue opening, playback, pause, seek, chapter, volume, mute and speed operations through the same worker; status polling is performed by that worker between commands.
+- Carry the current volume and playback speed into each newly opened audiobook.
+- Keep all Tk widget updates on the interface thread and show worker errors without blocking the reader.
+- Preserve the bounded MPV diagnostic log tail locally when an audiobook fails to open, for targeted troubleshooting.
+- Add tests verifying that all MPV backend calls run on one thread and that load errors are reported while the worker remains responsive.
+
+
+## 0.13.12-1 — Responsive audiobook loading and playback status
+
+- Move M4B loading, MPV media probing and embedded cover-art extraction off the Tk interface thread.
+- Move recurring MPV status polling to a background monitor and pass immutable snapshots to the interface.
+- Use cached status for progress saving, mute and 30-second seeking so these controls do not trigger multi-property synchronous status reads.
+- Serialize MPV IPC requests across worker and UI threads and coordinate shutdown with active polling.
+- Keep the interface responsive while an audiobook is opening and show a useful error if a file cannot be read.
+- Add regression tests preventing synchronous audiobook loading, status polling and progress reads on the UI thread.
+
+
+## 0.13.11-1 — Audiobook player visual and navigation refinement
+
+- Match the audiobook screen more closely to the approved cover-led design, with rounded circular transport controls.
+- Add a visible working volume rocker/slider and speaker mute toggle, synchronised with MPV playback state.
+- Keep embedded chapter titles in the left Contents panel, replace generic numbered track/file names with Chapter labels, and wrap long titles to fit without horizontal scrolling.
+- Highlight the chapter currently playing and retain per-audiobook progress.
+
+
 ## 0.13.10-1 — Resume and full-screen layout fixes
 
 - Restore the reader text frame before packing its chapter heading, preventing Tkinter pack-order errors when resuming a book from the welcome-back panel.

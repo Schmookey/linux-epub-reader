@@ -1,0 +1,81 @@
+name: Publish v0.13.15 release
+
+# One-time publisher: only run for the PR #9 merge into the original main head.
+# This does not publish again on later changes to main.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: ${{ github.event.before == 'bac9ff85c0d163c47812199277a92f28657e5a2f' }}
+    runs-on: ubuntu-26.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v0.13.15
+      VALIDATED_SOURCE: ce212d45ab735cfaa3df7d14f504b763d67012a4
+    steps:
+      - name: Check out merged main
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify merged code matches the validated build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$VALIDATED_SOURCE" HEAD
+          for path in src/linux_epub_reader.py src/audiobook_player.py \
+            packaging/flatpak/linux-epub-reader-launcher \
+            packaging/flatpak/linux-epub-reader-preview-launcher \
+            io.github.schmookey.LinuxEpubReader.yml \
+            io.github.schmookey.LinuxEpubReader.Preview.yml \
+            scripts/build-deb.sh; do
+            git diff --exit-code "$VALIDATED_SOURCE" HEAD -- "$path"
+          done
+          test ! -z "$(sed -n 's/^APP_VERSION = "\([^"]*\)"/\1/p' src/linux_epub_reader.py)"
+          grep -qx 'APP_VERSION = "0.13.15"' src/linux_epub_reader.py
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing release $TAG" >&2
+            exit 1
+          fi
+
+      - name: Download tested Debian and Flatpak artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+          gh run download 41907042354 --name linux-epub-reader-deb --dir release-files
+          gh run download 41907042357 --name linux-epub-reader-flatpak --dir release-files
+          gh run download 41907042373 --name linux-epub-reader-preview-flatpak --dir release-files
+          test -s release-files/linux-epub-reader_0.13.15-1_all.deb
+          test -s release-files/linux-epub-reader-0.13.15.flatpak
+          test -s release-files/linux-epub-reader-preview-0.13.15.flatpak
+          (
+            cd release-files
+            sha256sum \
+              linux-epub-reader_0.13.15-1_all.deb \
+              linux-epub-reader-0.13.15.flatpak \
+              linux-epub-reader-preview-0.13.15.flatpak > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Publish GitHub release with all three verified files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            release-files/linux-epub-reader_0.13.15-1_all.deb \
+            release-files/linux-epub-reader-0.13.15.flatpak \
+            release-files/linux-epub-reader-preview-0.13.15.flatpak \
+            release-files/SHA256SUMS \
+            --target "$GITHUB_SHA" \
+            --title "Linux EPUB Reader v0.13.15" \
+            --notes-file docs/releases/v0.13.15.md \
+            --latest
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,url

@@ -1,0 +1,258 @@
+name: Standalone Flatpak Preview
+
+on:
+  push:
+    paths:
+      - '.github/workflows/flatpak-preview.yml'
+      - 'io.github.schmookey.LinuxEpubReader.Preview.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'share/icons/**'
+      - 'packaging/flatpak/**'
+      - 'LICENSE'
+  pull_request:
+    paths:
+      - '.github/workflows/flatpak-preview.yml'
+      - 'io.github.schmookey.LinuxEpubReader.Preview.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'share/icons/**'
+      - 'packaging/flatpak/**'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit to build
+        required: true
+        default: main
+        type: string
+      release_tag:
+        description: Optional existing GitHub Release tag to attach the bundle to
+        required: false
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flatpak-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Check out the requested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref || github.event.release.tag_name || github.ref }}
+
+      - name: Set up the pinned host Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.15.2"
+
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes flatpak flatpak-builder appstream xvfb dbus-x11 ffmpeg pulseaudio pulseaudio-utils
+
+      - name: Report and verify the build environment
+        run: |
+          cat /etc/os-release
+          flatpak --version
+          flatpak-builder --version
+          appstreamcli --version
+          python -VV
+          python -c 'import sys; assert sys.version_info[:3] == (3, 15, 2), sys.version'
+
+      - name: Add Flathub remote and install the build runtime
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
+          PLATFORM_REF="$(flatpak info --show-ref org.freedesktop.Platform//26.08)"
+          SDK_REF="$(flatpak info --show-ref org.freedesktop.Sdk//26.08)"
+          printf 'Installed Platform ref: %s\n' "$PLATFORM_REF"
+          printf 'Installed SDK ref: %s\n' "$SDK_REF"
+          case "$PLATFORM_REF" in */26.08) ;; *) echo "Unexpected Platform ref: $PLATFORM_REF" >&2; exit 1 ;; esac
+          case "$SDK_REF" in */26.08) ;; *) echo "Unexpected SDK ref: $SDK_REF" >&2; exit 1 ;; esac
+          flatpak info --show-commit org.freedesktop.Platform//26.08
+          flatpak info --show-commit org.freedesktop.Sdk//26.08
+
+      - name: Validate AppStream metadata
+        run: appstreamcli validate packaging/flatpak/io.github.schmookey.LinuxEpubReader.Preview.metainfo.xml
+
+      - name: Run project tests
+        run: |
+          python -m py_compile src/linux_epub_reader.py src/audiobook_player.py tests/test_reader.py tests/test_audiobook_player.py
+          python -m unittest discover -s tests -v
+
+      - name: Build Flatpak
+        run: |
+          set -euo pipefail
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir io.github.schmookey.LinuxEpubReader.Preview.yml
+          APP_ID=io.github.schmookey.LinuxEpubReader.Preview
+          VERSION="$(grep -m1 '^APP_VERSION = ' src/linux_epub_reader.py | cut -d '"' -f 2)"
+          test -n "$VERSION"
+          mkdir -p dist
+          flatpak build-bundle repo "dist/linux-epub-reader-preview-${VERSION}.flatpak" "$APP_ID" --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+          echo "APP_ID=$APP_ID" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUNDLE=dist/linux-epub-reader-preview-${VERSION}.flatpak" >> "$GITHUB_ENV"
+
+      - name: Install the bundle and verify Python, Tcl and Tk in the sandbox
+        run: |
+          flatpak install --user --noninteractive "$BUNDLE"
+          dbus-run-session -- xvfb-run -a flatpak run --user --command=python3.15 "$APP_ID" -c 'import sys, tkinter, _tkinter; assert sys.version_info[:3] == (3, 15, 2), sys.version; root = tkinter.Tk(); root.withdraw(); tcl = root.tk.call("info", "patchlevel"); tk = root.tk.call("package", "require", "Tk"); print("Python:", sys.version.split()[0]); print("Tcl:", tcl); print("Tk:", tk); assert tcl == "9.1.0", tcl; assert tk == "9.1.0", tk; root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
+          flatpak run --user --command=python3.15 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader-preview"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
+          flatpak run --user --command=python3.15 "$APP_ID" -c 'from PIL import Image; import io; image = Image.new("RGB", (4, 6), "green"); stream = io.BytesIO(); image.save(stream, format="JPEG"); stream.seek(0); decoded = Image.open(stream); decoded.load(); assert decoded.size == (4, 6); print("Pillow JPEG cover decoding passed")'
+          flatpak run --user --command=sh "$APP_ID" - <<'SH'
+          eval "$(grep '^export LINUX_EPUB_READER_STATE_DIR=' /app/bin/linux-epub-reader-preview)"
+          python3.15 - <<'PY'
+          import os, pathlib, sys
+          sys.path.insert(0, '/app/lib/linux-epub-reader')
+          import linux_epub_reader as app
+          expected = (pathlib.Path.home() / '.local/share/linux-epub-reader-preview').resolve()
+          actual = pathlib.Path(app.STATE_DIR).resolve()
+          print('Configured preview state:', repr(str(expected)))
+          print('Application state:', repr(str(actual)))
+          assert actual == expected, (str(actual), str(expected))
+          legacy = pathlib.Path(app.LEGACY_STATE_DIR).resolve()
+          assert legacy.is_relative_to(expected), (str(legacy), str(expected))
+          assert 'linux-epub-reader-preview' in actual.parts
+          print('Preview state isolation from stable reader passed')
+          PY
+          SH
+          flatpak run --user --command=mpv "$APP_ID" --version
+          mkdir -p "$HOME/.local/share/linux-epub-reader-preview"
+          pulseaudio --start --exit-idle-time=-1 --load=module-null-sink --log-target=stderr
+          pactl info
+          cat > "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta" <<'EOF'
+          ;FFMETADATA1
+          [CHAPTER]
+          TIMEBASE=1/1
+          START=0
+          END=3
+          title=Opening
+          [CHAPTER]
+          TIMEBASE=1/1
+          START=3
+          END=6
+          title=Second chapter
+          EOF
+          ffmpeg -hide_banner -loglevel error -f lavfi -i sine=frequency=440:duration=6 -f ffmetadata -i "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta" -map_metadata 1 -map_chapters 1 -c:a aac -b:a 64k -movflags +faststart -y "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b"
+          flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
+          import os
+          import queue
+          import sys
+          import time
+          sys.path.insert(0, "/app/lib/linux-epub-reader")
+          from audiobook_player import AudioWorker, MPVBackend
+
+          path = os.path.expanduser("~/.local/share/linux-epub-reader-preview/flatpak-integration.m4b")
+          player = MPVBackend(audio_output="pulse", startup_timeout=8)
+          try:
+              status = player.load(path)
+              assert float(status["duration"]) > 5, status
+              assert status["paused"], status
+              expected = ["Opening", "Second chapter"]
+              actual = [chapter["title"] for chapter in status["chapters"]]
+              assert actual == expected, actual
+              player.select_chapter(1)
+              chapter_status = player.status()
+              assert chapter_status["chapter"] == 1, chapter_status
+              player.seek(4)
+              assert float(player.status()["time_pos"] or 0) >= 3.5
+              assert player.play_pause()
+              time.sleep(0.25)
+              player.pause()
+              assert player.status()["paused"]
+              replacement = player.load(path)
+              assert replacement["paused"], replacement
+              assert [chapter["title"] for chapter in replacement["chapters"]] == expected
+              print("Direct MPV M4B playback, chapters, pause, seek and IPC passed")
+          finally:
+              player.close()
+
+          # Exercise the exact worker path used by the Tk GUI, not merely MPV
+          # directly. This catches a mismatch between backend and worker APIs.
+          worker = AudioWorker(
+              backend_factory=lambda: MPVBackend(audio_output="pulse", startup_timeout=8),
+              poll_interval=0.25,
+          )
+          try:
+              assert worker.submit("open", 21, path, 0.0, None, 70.0, 1.0)
+              deadline = time.monotonic() + 10
+              loaded = None
+              while time.monotonic() < deadline:
+                  try:
+                      event = worker.events.get(timeout=max(0.1, deadline - time.monotonic()))
+                  except queue.Empty:
+                      break
+                  if event.get("type") == "loaded":
+                      loaded = event
+                      break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert loaded is not None, "AudioWorker did not report loaded after open"
+              assert loaded["token"] == 21, loaded
+              assert float(loaded["status"]["duration"]) > 5, loaded
+              assert worker.submit("play", 21)
+              deadline = time.monotonic() + 5
+              advanced = False
+              while time.monotonic() < deadline:
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "status":
+                      if float((event.get("status") or {}).get("time_pos") or 0) > 0.2:
+                          advanced = True
+                          break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert advanced, "Worker playback position did not advance after Play"
+              assert worker.submit("pause", 21)
+              deadline = time.monotonic() + 3
+              paused = False
+              while time.monotonic() < deadline:
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "status" and (event.get("status") or {}).get("paused"):
+                      paused = True
+                      break
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert paused, "Worker did not report paused after Pause"
+              assert worker.submit("skip", 21, 1.0)
+              assert worker.submit("toggle_mute", 21)
+              deadline = time.monotonic() + 3
+              completed = set()
+              while time.monotonic() < deadline and not {"skip", "toggle_mute"}.issubset(completed):
+                  event = worker.events.get(timeout=max(0.1, deadline-time.monotonic()))
+                  if event.get("type") == "command_completed":
+                      completed.add(event.get("action"))
+                  if event.get("type") == "error":
+                      raise AssertionError(event)
+              assert {"skip", "toggle_mute"}.issubset(completed), completed
+              print("Flatpak M4B playback through AudioWorker, Play, Pause, Skip, Mute and live status passed")
+          finally:
+              worker.shutdown()
+              worker.join(timeout=5)
+              assert not worker.is_alive, "AudioWorker did not shut down"
+          PY
+          rm -f "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.m4b" "$HOME/.local/share/linux-epub-reader-preview/flatpak-integration.ffmeta"
+          pulseaudio --kill || true
+
+      - name: Save bundle as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-epub-reader-preview-flatpak
+          path: ${{ env.BUNDLE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach bundle to the requested GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" "$BUNDLE" --clobber
