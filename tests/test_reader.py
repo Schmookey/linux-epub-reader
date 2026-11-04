@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 import unittest
 import zipfile
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import linux_epub_reader as reader
@@ -222,6 +223,51 @@ class ReadingStateFileTests(unittest.TestCase):
                 preserved = handle.read()
             self.assertFalse(os.path.exists(path + ".tmp"))
         self.assertEqual(preserved, original)
+
+
+class StateSaveWarningTests(unittest.TestCase):
+    def _reader_without_gui(self):
+        # Exercise state-save failure handling without requiring an X display.
+        instance = object.__new__(reader.Reader)
+        instance.state = {"books": {"saved": {"chapter": 2}}}
+        instance._state_write_blocked = False
+        instance._state_save_warning_shown = False
+        return instance
+
+    def test_failed_save_warns_once_and_preserves_error(self):
+        instance = self._reader_without_gui()
+        with mock.patch.object(reader, "save_state_file", side_effect=OSError("disk full")), \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            with self.assertRaisesRegex(OSError, "disk full"):
+                instance._save_state()
+            with self.assertRaisesRegex(OSError, "disk full"):
+                instance._save_state()
+        warning.assert_called_once()
+        self.assertIn("reading or listening", warning.call_args.args[1])
+        self.assertTrue(instance._state_save_warning_shown)
+
+    def test_warning_rearms_after_a_successful_save(self):
+        instance = self._reader_without_gui()
+        with mock.patch.object(reader, "save_state_file") as save, \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            save.side_effect = [OSError("read-only"), None, OSError("full")]
+            with self.assertRaises(OSError):
+                instance._save_state()
+            instance._save_state()
+            self.assertFalse(instance._state_save_warning_shown)
+            with self.assertRaises(OSError):
+                instance._save_state()
+        self.assertEqual(warning.call_count, 2)
+
+    def test_blocked_recovery_save_warns_without_attempting_a_write(self):
+        instance = self._reader_without_gui()
+        instance._state_write_blocked = True
+        with mock.patch.object(reader, "save_state_file") as save, \
+             mock.patch.object(reader.messagebox, "showwarning") as warning:
+            with self.assertRaisesRegex(OSError, "Saving is disabled"):
+                instance._save_state()
+        save.assert_not_called()
+        warning.assert_called_once()
 
 
 class CoverAndWelcomePanelDataTests(unittest.TestCase):
