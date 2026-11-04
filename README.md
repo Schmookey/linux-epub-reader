@@ -13,8 +13,8 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Dark reading surface, soft-white text, Atkinson Hyperlegible defaults, adjustable text size and approximately 1.5× line spacing.
 - Full-screen reading (F11; Esc to exit), with an optional floating Mint-green F11 exit hint and a saved 'Don't show this again' preference. The hint can be restored from the View menu.
 - Book metadata, search, bookmarks and saved reading positions.
-- Local M4B audiobooks in the same application window, with play/pause, stop, seeking, chapter selection, elapsed/remaining time and separately saved listening positions. Audiobooks open paused; playback never starts automatically.
-- An illustrated welcome-back screen with the last book's front cover, available publication details, saved chapter and progress, and a prominent Mint-green Resume button.
+- Local M4B audiobooks in the same application window, with play/pause, stop, seeking, clickable chapter markers on the playback timeline, elapsed/remaining time and separately saved listening positions. Audiobooks open paused; playback never starts automatically. The audiobook mode has no Contents sidebar; EPUB mode retains it.
+- A Home dashboard with separate last-read EPUB and last-listened M4B cards, local cover artwork, descriptive metadata, saved positions, and Mint-green Resume buttons. Both formats retain their positions independently between launches.
 - Detection of Adobe ADEPT and Readium LCP protected files without attempting to remove protection.
 
 ## Current limitations
@@ -53,9 +53,9 @@ On Debian or Linux Mint with dpkg-deb available, run:
 
 The Debian package uses gzip compression for broader compatibility with older package managers.
 
-The output is dist/linux-epub-reader_0.13.10-1_all.deb. Install it by double-clicking the deb in the desktop installer, or using:
+The output is `dist/linux-epub-reader_0.13.15-1_all.deb`. Install it by double-clicking the package in the desktop installer, or using:
 
-    sudo apt install ./dist/linux-epub-reader_0.13.10-1_all.deb
+    sudo apt install ./dist/linux-epub-reader_0.13.15-1_all.deb
 
 ## Privacy and project boundary
 
@@ -68,7 +68,7 @@ The output is dist/linux-epub-reader_0.13.10-1_all.deb. Install it by double-cli
 
 ## Local data and offline behaviour
 
-Reading state is stored in ~/.local/share/linux-epub-reader/. On first launch, the app attempts to copy saved state from the former ~/.local/share/mint-epub-reader/ directory when corresponding new files do not already exist.
+Stable reading state is stored in `~/.local/share/linux-epub-reader/`. The separate Flatpak Preview uses `~/.local/share/linux-epub-reader-preview/`, resolved from the actual home directory at application launch; it does not import or overwrite stable history. On first stable launch, the app attempts to copy saved state from the former `~/.local/share/mint-epub-reader/` directory when corresponding new files do not already exist. If a state save fails (for example because of disk space or permissions), the reader displays a warning instead of silently assuming the progress was saved.
 
 The reader source does not implement HTTP clients or fetch book content. It does not open web pages or download software. Protected and unsupported files trigger a local explanatory message only; no external application is launched.
 
