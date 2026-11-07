@@ -91,6 +91,10 @@ modules:
       - install -d ${FLATPAK_DEST}/lib/python3.15/site-packages
       - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib ${FLATPAK_DEST}/bin/python3.15 -m zipfile -e mutagen.whl ${FLATPAK_DEST}/lib/python3.15/site-packages
       - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib ${FLATPAK_DEST}/bin/python3.15 -m zipfile -e dbus_next.whl ${FLATPAK_DEST}/lib/python3.15/site-packages
+      # dbus-next 0.2.3 imports typing.no_type_check_decorator, removed in Python 3.15.
+      # Apply the narrow, reviewed compatibility patch to this bundled wheel.
+      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib ${FLATPAK_DEST}/bin/python3.15 patch_dbus_next.py ${FLATPAK_DEST}/lib/python3.15/site-packages/dbus_next/service.py
+      - LD_LIBRARY_PATH=${FLATPAK_DEST}/lib ${FLATPAK_DEST}/bin/python3.15 -c 'from dbus_next import BusType, PropertyAccess, RequestNameReply, Variant; from dbus_next.aio import MessageBus; from dbus_next.service import ServiceInterface, method, dbus_property; import mutagen; print("Bundled Python 3.15 dbus-next/Mutagen imports passed")'
     sources:
       - type: file
         url: https://files.pythonhosted.org/packages/47/d8/a29e4e3991765e7ce4ed1f7e4074fe1ba9da03e0048639734de60f9cadb9/mutagen-1.48.1-py3-none-any.whl
@@ -100,6 +104,8 @@ modules:
         url: https://files.pythonhosted.org/packages/d2/fc/c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/dbus_next-0.2.3-py3-none-any.whl
         sha256: 58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b
         dest-filename: dbus_next.whl
+      - type: file
+        path: packaging/flatpak/patch_dbus_next.py
 
   # Bundled offline-only audio engine. FFmpeg has network protocols disabled.
   - name: ffmpeg

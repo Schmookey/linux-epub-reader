@@ -112,8 +112,17 @@ class MPRISBridge:
             from dbus_next import BusType, PropertyAccess, RequestNameReply
             from dbus_next.aio import MessageBus
             from dbus_next.service import ServiceInterface, method, dbus_property
+        except ModuleNotFoundError as exc:
+            if os.environ.get('FLATPAK_ID'):
+                self.error = ('The Flatpak is missing an MPRIS Python module: ' + str(exc)
+                              + '. Install a newer verified Preview bundle.')
+            else:
+                self.error = 'Install python3-dbus-next for desktop media controls: ' + str(exc)
+            return
         except ImportError as exc:
-            self.error = 'Install python3-dbus-next for desktop media controls: ' + str(exc)
+            # A bundled library can exist but be incompatible with its Python.
+            # Do not misdiagnose a Python API error as an absent apt package.
+            self.error = 'MPRIS dependency import failed: ' + str(exc)
             return
         bridge = self
 

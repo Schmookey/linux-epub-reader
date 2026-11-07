@@ -5,7 +5,7 @@ Linux EPUB Reader's original project code is licensed under GNU GPL version 3 on
 The Flatpak build includes these additional components:
 
 - **Mutagen 1.48.1** — local audio tag and embedded-cover reader, GPL-2.0-or-later; upstream: https://mutagen.readthedocs.io/ (project code is GPL-3.0-only, which is compatible with Mutagen's or-later licence).
-- **dbus-next 0.2.3** — pure-Python local MPRIS/D-Bus integration, MIT licence; upstream: https://python-dbus-next.readthedocs.io/ .
+- **dbus-next 0.2.3** — pure-Python local MPRIS/D-Bus integration, MIT licence; upstream: https://python-dbus-next.readthedocs.io/ . The bundled wheel receives a minimal local compatibility patch (`packaging/flatpak/patch_dbus_next.py`) replacing the removed `typing.no_type_check_decorator` used by the library with an equivalent wrapper for Python 3.15. This change does not alter the library's MIT licensing or the host Python installation.
 
 - **Pillow 13.0.0** — bundled Python image decoder for JPEG and other EPUB cover formats; upstream: https://python-pillow.org/
 
