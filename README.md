@@ -81,6 +81,8 @@ The reader source does not implement HTTP clients or fetch book content. It does
 
 Music uses separate local `music_library.sqlite3` and `music_state.json` files alongside the existing EPUB/M4B `reading_state.json` in the configured data directory. No music files are modified and no network services are contacted. Refer to [docs/MUSIC.md](docs/MUSIC.md) for music formats, playlists, MPRIS behaviour and testing notes.
 
+The Debian build can read local mounted volumes using the user's ordinary Linux permissions. The Stable and Preview Flatpaks expose `/media`, `/run/media` and `/mnt` **read-only** so the Tk file chooser can open EPUB, M4B and Music files on mounted removable drives; the application cannot change those media files. The app still has no network permission. Consult [Flatpak packaging notes](packaging/flatpak/README.md) for mount paths and troubleshooting.
+
 ## Contributing
 
 Please read CONTRIBUTING.md and the issue templates under .github/ISSUE_TEMPLATE/. Do not attach commercial books, DRM licence files, credentials, Adobe IDs or private keys to public issues. Small synthetic test EPUBs are preferred.

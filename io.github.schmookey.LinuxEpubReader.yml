@@ -12,6 +12,12 @@ finish-args:
   - --own-name=org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader
   - --share=ipc
   - --filesystem=home:ro
+  # The Tk file chooser does not use a file portal. Read-only mounted USB drives,
+  # removable storage and locally mounted media must be visible in the sandbox.
+  # Do not grant --filesystem=host or write access to the media themselves.
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/mnt:ro
   # Keep reading-state writes limited to the application's existing state directory.
   - --filesystem=~/.local/share/linux-epub-reader:create
   - --env=TCL_LIBRARY=/app/lib/tcl9.1
