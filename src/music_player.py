@@ -76,12 +76,29 @@ def _first(value):
     return str(value) if value is not None else ''
 
 
+def _music_tag_text(value):
+    """Flatten local comment/description tags without including lyrics or binary tags."""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ''
+    if hasattr(value, 'text'):
+        value = value.text
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ''
+    if isinstance(value, bytes):
+        value = value.decode('utf-8', errors='replace')
+    if not isinstance(value, str):
+        return ''
+    # Keep untrusted embedded metadata readable and bounded in the dashboard.
+    return re.sub(r'[\x00-\x1f\x7f]+', ' ', value).strip()[:1000]
+
+
 def track_info(path):
     """Extract tags offline with optional Mutagen; untagged files use filenames."""
     path = normalise_music_path(path)
     result = {'path': path, 'title': Path(path).stem, 'artist': '',
               'album': '', 'albumartist': '', 'genre': '', 'date': '',
-              'tracknumber': 0, 'discnumber': 0, 'duration': 0.0}
+              'tracknumber': 0, 'discnumber': 0, 'duration': 0.0,
+              'description': ''}
     try:
         from mutagen import File
         media = File(path, easy=True)
@@ -96,6 +113,27 @@ def track_info(path):
                 result[key] = int(match.group()) if match else 0
             if getattr(media, 'info', None):
                 result['duration'] = max(0.0, float(getattr(media.info, 'length', 0.0) or 0.0))
+            # Some tag formats expose descriptive comments in the easy view.
+            for key in ('description', 'comment'):
+                description = _music_tag_text(tags.get(key))
+                if description:
+                    result['description'] = description
+                    break
+            # ID3 comments and MP4 ©cmt often require a raw tag view instead.
+            if not result['description']:
+                raw = File(path)
+                raw_tags = getattr(raw, 'tags', None)
+                if raw_tags:
+                    for key in ('description', 'comment', 'DESCRIPTION',
+                                'COMMENT', '\xa9cmt', 'TXXX:DESCRIPTION', 'COMM'):
+                        if key == 'COMM' and hasattr(raw_tags, 'getall'):
+                            value = raw_tags.getall('COMM')
+                        else:
+                            value = raw_tags.get(key)
+                        description = _music_tag_text(value)
+                        if description:
+                            result['description'] = description
+                            break
     except Exception:  # Mutagen raises format-specific parse errors for malformed audio
         pass
     return result

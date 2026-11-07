@@ -20,6 +20,54 @@ FG = '#F0F1F3'
 BORDER = '#353941'
 
 
+def music_home_details(metadata, saved_position=0):
+    """Build honest, concise dashboard copy from local song/album tags only."""
+    data = metadata if isinstance(metadata, dict) else {}
+
+    def tag(key):
+        return str(data.get(key) or '').strip()
+
+    artist = tag('artist') or tag('albumartist') or 'Artist not supplied'
+    album = tag('album') or 'Album not supplied'
+    fields = []
+    if tag('albumartist') and tag('albumartist') != tag('artist'):
+        fields.append('Album artist: ' + tag('albumartist'))
+    if tag('genre'):
+        fields.append('Genre: ' + tag('genre'))
+    if tag('date'):
+        fields.append('Released: ' + tag('date'))
+    try:
+        track = max(0, int(data.get('tracknumber') or 0))
+        disc = max(0, int(data.get('discnumber') or 0))
+    except (TypeError, ValueError, OverflowError):
+        track = disc = 0
+    if track or disc:
+        fields.append(' · '.join(part for part in (
+            f'Track {track}' if track else '', f'Disc {disc}' if disc else ''
+        ) if part))
+    try:
+        duration = max(0.0, float(data.get('duration') or 0))
+    except (TypeError, ValueError, OverflowError):
+        duration = 0.0
+    if duration:
+        fields.append('Duration: ' + format_time(duration))
+    try:
+        position = max(0.0, float(saved_position or 0))
+    except (TypeError, ValueError, OverflowError):
+        position = 0.0
+    description = tag('description') or (
+        'No description or comments supplied in the song metadata.'
+    )
+    return {
+        'artist': artist,
+        'album': 'Album: ' + album,
+        'extra': fields,
+        'description': description,
+        'position': 'Saved position: ' + format_time(position)
+                    + (' of ' + format_time(duration) if duration else ''),
+    }
+
+
 class MusicMixin:
     """Methods added to Reader without changing its EPUB and M4B data models."""
 
@@ -516,44 +564,76 @@ class MusicMixin:
             self._music_refresh_tree()
 
     def _build_music_home_card(self, parent, column=2):
+        """Last Played uses the same metadata-led layout as EPUB/M4B cards."""
         record = self.music_state or {}
         path = record.get('last_path') or ''
+        try:
+            available_path = normalise_music_path(path) if path else ''
+        except MusicError:
+            available_path = ''
+        available = bool(available_path)
         card = tk.Frame(parent, bg=PANEL_BG, highlightthickness=1, highlightbackground=BORDER)
         card.grid(row=0, column=column, sticky='nsew', padx=5, pady=4)
         tk.Label(card, text='LAST PLAYED', bg=PANEL_BG, fg=MINT_GREEN,
-                 font=('Sans', 9, 'bold'), anchor='w').pack(fill=tk.X, padx=14, pady=(14, 9))
+                 font=('Sans', 9, 'bold'), anchor='w').pack(fill=tk.X, padx=16, pady=(14, 8))
         body = tk.Frame(card, bg=PANEL_BG)
-        body.pack(fill=tk.BOTH, expand=True, padx=12)
-        art = tk.Frame(body, bg=APP_BG, width=100, height=145)
-        art.pack(side=tk.LEFT, anchor='n', padx=(0, 12))
+        body.pack(fill=tk.BOTH, expand=True, padx=14)
+        art = tk.Frame(body, bg=APP_BG, width=100, height=140,
+                       highlightbackground=BORDER, highlightthickness=1)
+        art.pack(side=tk.LEFT, anchor='n', padx=(0, 14))
         art.pack_propagate(False)
-        info = tk.Frame(body, bg=PANEL_BG)
-        info.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        available = bool(path and os.path.isfile(path))
-        data = track_info(path) if available else {}
-        artwork = track_cover(path) if available else None
-        self._music_home_photo = self._create_cover_photo(artwork, (98, 140)) if artwork else None
+        details = tk.Frame(body, bg=PANEL_BG)
+        details.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        data = track_info(available_path) if available else {}
+        artwork = track_cover(available_path) if available else None
+        self._music_home_photo = self._create_cover_photo(artwork, (94, 134)) if artwork else None
         tk.Label(art, image=self._music_home_photo or '',
                  text='' if self._music_home_photo else 'MUSIC', bg=APP_BG,
-                 fg=MUTED_TEXT).pack(fill=tk.BOTH, expand=True)
-        tk.Label(info, text=data.get('title') or ('Locate last song' if path else 'No music played yet'),
-            bg=PANEL_BG, fg=FG, font=('Sans', 12, 'bold'),
-            wraplength=175, justify=tk.LEFT).pack(anchor='w')
-        tk.Label(info, text=' · '.join(x for x in (data.get('artist'), data.get('album')) if x)
-                 if data else 'Open a song, album or playlist.', bg=PANEL_BG, fg=MUTED_TEXT,
-                 wraplength=175, justify=tk.LEFT).pack(anchor='w', pady=(6, 4))
-        if available:
-            tk.Label(info, text='Saved at '+format_time(record.get('position', 0)),
-                     bg=PANEL_BG, fg=MINT_GREEN).pack(anchor='w')
+                 fg=MUTED_TEXT, font=('Sans', 10, 'bold')).pack(fill=tk.BOTH, expand=True)
+        tk.Label(details,
+            text=data.get('title') or ('Locate last song' if path else 'No music played yet'),
+            bg=PANEL_BG, fg=FG, font=('Sans', 13, 'bold'),
+            wraplength=185, justify=tk.LEFT, anchor='w').pack(fill=tk.X)
+        if not path:
+            tk.Label(details, text='Open a song or album to see its metadata here.',
+                     bg=PANEL_BG, fg=MUTED_TEXT, font=('Sans', 9),
+                     wraplength=185, justify=tk.LEFT).pack(fill=tk.X, pady=(8, 0))
+        elif not available:
+            tk.Label(details,
+                text='This song is not at its saved location. Reconnect the drive or open it again from Music.',
+                bg=PANEL_BG, fg=MUTED_TEXT, font=('Sans', 9),
+                wraplength=185, justify=tk.LEFT).pack(fill=tk.X, pady=(8, 0))
+        else:
+            summary = music_home_details(data, record.get('position', 0))
+            tk.Label(details, text=summary['artist'], bg=PANEL_BG, fg=MUTED_TEXT,
+                     font=('Sans', 9), justify=tk.LEFT, anchor='w',
+                     wraplength=185).pack(fill=tk.X, pady=(4, 2))
+            tk.Label(details, text=summary['album'], bg=PANEL_BG, fg=MUTED_TEXT,
+                     font=('Sans', 9), justify=tk.LEFT, anchor='w',
+                     wraplength=185).pack(fill=tk.X, pady=(0, 3))
+            for field in summary['extra']:
+                tk.Label(details, text=field, bg=PANEL_BG, fg=MUTED_TEXT,
+                         font=('Sans', 8), justify=tk.LEFT, anchor='w',
+                         wraplength=185).pack(fill=tk.X, pady=(0, 2))
+            description = tk.Text(details, height=5, wrap=tk.WORD,
+                font=('Sans', 9), bg=APP_BG, fg=FG, insertbackground=FG,
+                relief=tk.FLAT, borderwidth=0, highlightthickness=0,
+                padx=7, pady=6)
+            description.pack(fill=tk.BOTH, expand=True, pady=(3, 6))
+            description.insert('1.0', summary['description'])
+            description.configure(state=tk.DISABLED)
+            tk.Label(details, text=summary['position'], bg=PANEL_BG, fg=MINT_GREEN,
+                     font=('Sans', 8, 'bold'), justify=tk.LEFT, anchor='w',
+                     wraplength=185).pack(fill=tk.X, pady=(0, 4))
         buttons = tk.Frame(card, bg=PANEL_BG)
-        buttons.pack(fill=tk.X, padx=12, pady=(12, 14))
+        buttons.pack(fill=tk.X, padx=14, pady=(10, 14))
         if available:
             tk.Button(buttons, text='Resume music', command=self._music_resume_last,
-                 bg=MINT_GREEN, fg=APP_BG, relief=tk.FLAT, font=('Sans', 9, 'bold'),
-                 padx=10, pady=6).pack(side=tk.LEFT)
+                bg=MINT_GREEN, fg=APP_BG, relief=tk.FLAT, font=('Sans', 9, 'bold'),
+                padx=10, pady=6).pack(side=tk.LEFT)
         tk.Button(buttons, text='Open Music…', command=self.show_music_mode,
-                 bg='#30343A', fg=FG, relief=tk.FLAT, padx=10, pady=6).pack(side=tk.LEFT, padx=6)
-
+                  bg='#30343A', fg=FG, relief=tk.FLAT,
+                  padx=10, pady=6).pack(side=tk.LEFT, padx=6)
 
     def _music_publish_mpris(self, kind, status):
         if kind != self._mpris_active_kind:
