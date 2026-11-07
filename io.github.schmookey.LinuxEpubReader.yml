@@ -9,7 +9,7 @@ finish-args:
   - --socket=x11
   # Audio output through PulseAudio (also supported by PipeWire's pipewire-pulse).
   - --socket=pulseaudio
-  - --own-name=org.mpris.MediaPlayer2.LinuxEpubReader
+  - --own-name=org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader
   - --share=ipc
   - --filesystem=home:ro
   # Keep reading-state writes limited to the application's existing state directory.

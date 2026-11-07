@@ -1,5 +1,6 @@
 """MPRIS service fallback and local-cover security tests (no D-Bus bus needed)."""
 import os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from mpris_service import MPRISBridge
@@ -17,9 +18,20 @@ class MPRISTests(unittest.TestCase):
             self.assertTrue(list((Path(folder)/'mpris-art').iterdir()))
             self.assertEqual(bridge.store_art(jpeg, '/fake/music/file.mp3'), uri)
 
+    def test_flatpak_mpris_names_and_desktop_entries(self):
+        with mock.patch.dict(os.environ, {'FLATPAK_ID': 'io.github.schmookey.LinuxEpubReader.Preview'}):
+            preview = MPRISBridge('/tmp', preview=True)
+            self.assertEqual(preview._name, 'org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader.Preview')
+            self.assertEqual(preview._desktop_entry, 'io.github.schmookey.LinuxEpubReader.Preview')
+        with mock.patch.dict(os.environ, {'FLATPAK_ID': 'io.github.schmookey.LinuxEpubReader'}):
+            stable = MPRISBridge('/tmp')
+            self.assertEqual(stable._name, 'org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader')
+            self.assertEqual(stable._desktop_entry, 'io.github.schmookey.LinuxEpubReader')
+
     def test_distinct_preview_and_stable_bus_names(self):
-        a = MPRISBridge('/tmp', preview=False)
-        b = MPRISBridge('/tmp', preview=True)
+        with mock.patch.dict(os.environ, {'FLATPAK_ID': ''}):
+            a = MPRISBridge('/tmp', preview=False)
+            b = MPRISBridge('/tmp', preview=True)
         self.assertNotEqual(a._name, b._name)
         self.assertTrue(a._name.startswith('org.mpris.MediaPlayer2.'))
         self.assertEqual(b.snapshot()['status'], 'Stopped')

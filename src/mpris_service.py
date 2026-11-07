@@ -18,8 +18,15 @@ class MPRISBridge:
     def __init__(self, state_dir, preview=False):
         self.commands = queue.Queue()
         self._state_dir = state_dir
-        self._name = ('org.mpris.MediaPlayer2.LinuxEpubReaderPreview' if preview
-                      else 'org.mpris.MediaPlayer2.LinuxEpubReader')
+        flatpak_id = os.environ.get('FLATPAK_ID', '')
+        if flatpak_id in ('io.github.schmookey.LinuxEpubReader',
+                          'io.github.schmookey.LinuxEpubReader.Preview'):
+            self._name = 'org.mpris.MediaPlayer2.' + flatpak_id
+            self._desktop_entry = flatpak_id
+        else:
+            self._name = ('org.mpris.MediaPlayer2.LinuxEpubReaderPreview' if preview
+                          else 'org.mpris.MediaPlayer2.LinuxEpubReader')
+            self._desktop_entry = 'linux-epub-reader'
         self._lock = threading.RLock()
         self._snapshot = {'status': 'Stopped', 'metadata': {}, 'position': 0,
                           'volume': 0.8, 'next': False, 'previous': False,
@@ -102,7 +109,7 @@ class MPRISBridge:
 
     def _run(self):
         try:
-            from dbus_next import BusType, PropertyAccess
+            from dbus_next import BusType, PropertyAccess, RequestNameReply
             from dbus_next.aio import MessageBus
             from dbus_next.service import ServiceInterface, method, dbus_property
         except ImportError as exc:
@@ -140,7 +147,7 @@ class MPRISBridge:
 
             @dbus_property(access=PropertyAccess.READ)
             def DesktopEntry(self) -> 's':
-                return 'linux-epub-reader'
+                return bridge._desktop_entry
 
             @dbus_property(access=PropertyAccess.READ)
             def SupportedUriSchemes(self) -> 'as':
@@ -260,7 +267,9 @@ class MPRISBridge:
             bus.export('/org/mpris/MediaPlayer2', Root())
             iface = Player()
             bus.export('/org/mpris/MediaPlayer2', iface)
-            await bus.request_name(self._name)
+            reply = await bus.request_name(self._name)
+            if reply not in (RequestNameReply.PRIMARY_OWNER, RequestNameReply.ALREADY_OWNER):
+                raise RuntimeError('MPRIS bus name could not be acquired: ' + self._name)
             self._interface, self._bus = iface, bus
             self.available = True
             await bus.wait_for_disconnect()

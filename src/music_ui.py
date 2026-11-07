@@ -35,6 +35,7 @@ class MusicMixin:
         self.music_last_status = {}
         self.music_token = 0
         self.music_loading = False
+        self.music_ready = False
         self.music_seeking = False
         self.music_volume_dragging = False
         self.music_close_requested = False
@@ -154,6 +155,9 @@ class MusicMixin:
         self.music_queue_label = tk.Label(panel, text='Queue is empty', bg=APP_BG,
                                           fg=MUTED_TEXT, font=('Sans', 9))
         self.music_queue_label.pack(pady=(12, 0))
+        self.music_mpris_status_label = tk.Label(panel, text='Desktop media controls: connecting…',
+            bg=APP_BG, fg=MUTED_TEXT, font=('Sans', 9), wraplength=650)
+        self.music_mpris_status_label.pack(pady=(5, 0))
         self._music_refresh_tree()
         self.music_poll_id = self.after(120, self._music_events)
         self.music_mpris_poll_id = self.after(180, self._music_mpris_actions)
@@ -272,6 +276,7 @@ class MusicMixin:
         self.music_metadata = track_info(path)
         self.music_token += 1
         self.music_loading = True
+        self.music_ready = False
         self._music_play_after_open = autoplay
         self.music_last_status = {'time_pos': position, 'paused': True}
         self.music_title_label.configure(text=self.music_metadata.get('title') or os.path.basename(path))
@@ -302,6 +307,11 @@ class MusicMixin:
         self.status.configure(text='Music · local playback only')
 
     def _music_resume_last(self):
+        # The Home card is also used while a track plays in the background.
+        # Never reopen (and therefore pause/reset) a live music session.
+        if self.music_path and (self.music_ready or self.music_loading):
+            self.show_music_mode()
+            return
         path = self.music_state.get('last_path')
         if not path:
             self.show_music_mode()
@@ -399,6 +409,7 @@ class MusicMixin:
                 kind = event['type']
                 if kind == 'loaded':
                     self.music_loading = False
+                    self.music_ready = True
                     self.music_last_status = event['status']
                     if self._music_play_after_open:
                         self._mpris_active_kind = 'music'
@@ -432,6 +443,7 @@ class MusicMixin:
                     self.music_loading = False
                     self.status.configure(text='Music: '+event.get('error', 'Playback error'))
                     if event.get('action') == 'open':
+                        self.music_ready = False
                         messagebox.showerror('Music playback failed',
                           'This local audio file could not be played. It may be damaged, '
                           'unsupported by your installed decoder, or DRM-protected.\n\n'
@@ -573,6 +585,14 @@ class MusicMixin:
     def _music_mpris_actions(self):
         if self.music_close_requested:
             return
+        if self._mpris.available:
+            diagnostic = 'Desktop media controls: connected'
+        elif self._mpris.error:
+            diagnostic = 'Desktop media controls unavailable: ' + str(self._mpris.error)[:175]
+        else:
+            diagnostic = 'Desktop media controls: connecting…'
+        if self.music_mpris_status_label.cget('text') != diagnostic:
+            self.music_mpris_status_label.configure(text=diagnostic)
         try:
             while True:
                 action, args = self._mpris.commands.get_nowait()

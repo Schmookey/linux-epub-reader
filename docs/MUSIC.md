@@ -65,3 +65,12 @@ The public [VLC user documentation](https://vlc-user-documentation.readthedocs.i
 ## Limitations and release status
 
 This is a feature-branch implementation for testing, **not** a validated stable release. Decoder coverage depends on each package. Albums are grouped from embedded tags, and playlist creation, addition and deletion work locally; playlist track reordering and M3U export are not yet included. Playlist library importing can block the interface for large folders. MPRIS behaviour on an actual locked Cinnamon desktop and real packaged playback require manual verification before merging.
+
+## Playback and MPRIS diagnostics (November 2026 preview fix)
+
+- Returning to Music with the top navigation button preserves the active player and does not restart a track. Clicking **Resume music** on Home also returns to the existing session if music is already playing or loading; it only reloads the saved song paused when there is no active session.
+- The Music screen now reports **Desktop media controls: connected**, **connecting**, or an error description. An error means the MPRIS D-Bus service was not registered, even if local audio playback works.
+- Flatpak uses the standard application-specific bus names `org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader` and `org.mpris.MediaPlayer2.io.github.schmookey.LinuxEpubReader.Preview`. The app exports the matching desktop-entry ID and verifies primary ownership of its session-bus name. No broad D-Bus permissions or network permission are required.
+- On Linux Mint Cinnamon, check **System Settings → Screensaver → Customise → General**: enable **Show media player controls**, optionally **Show album art**, and **Allow keyboard shortcuts**. The display of lock-screen controls is still managed by Cinnamon rather than by the application.
+- To diagnose a running Preview Flatpak, inspect the status line inside Music, then from a Linux Mint terminal run `busctl --user list | grep org.mpris.MediaPlayer2` or `playerctl -l` (if playerctl is installed). The Preview service should appear when the app is running and the Music screen reports **connected**. The `flatpak run --user --log-session-bus io.github.schmookey.LinuxEpubReader.Preview` option can help identify sandbox bus-name denials.
+- Real MPRIS service registration, lock-screen presentation and media-key controls must still be tested on a Cinnamon desktop. Automated unit tests cannot guarantee lock-screen presentation.
