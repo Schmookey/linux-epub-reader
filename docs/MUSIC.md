@@ -1,6 +1,6 @@
 # Music mode — offline, DRM-free playback
 
-This feature branch adds **Music** as a fourth mode to the existing Home, EBook and Audiobook application. It follows the existing dark background, Linux Mint-green transport styling and embedded-artwork presentation. Music and M4B audiobooks are separate **libraries, playback processes and saved histories**.
+Version 0.14 adds **Music** as a fourth mode to the existing Home, EBook and Audiobook application. It follows the existing dark background, Linux Mint-green transport styling and embedded-artwork presentation. Music and M4B audiobooks are separate **libraries, playback processes and saved histories**.
 
 ## Operation
 
@@ -64,7 +64,7 @@ The public [VLC user documentation](https://vlc-user-documentation.readthedocs.i
 
 ## Limitations and release status
 
-This is a feature-branch implementation for testing, **not** a validated stable release. Decoder coverage depends on each package. Albums are grouped from embedded tags, and playlist creation, addition and deletion work locally; playlist track reordering and M3U export are not yet included. Playlist library importing can block the interface for large folders. MPRIS behaviour on an actual locked Cinnamon desktop and real packaged playback require manual verification before merging.
+This feature was tested on Linux Mint Cinnamon before the v0.14 release preparation. Decoder coverage depends on each package. Albums are grouped from embedded tags, and playlist creation, addition and deletion work locally; playlist track reordering and M3U export are not yet included. Playlist library importing can block the interface for large folders. MPRIS behaviour on an actual locked Cinnamon desktop and real packaged playback require manual verification before merging.
 
 ## Playback and MPRIS diagnostics (November 2026 preview fix)
 

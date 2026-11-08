@@ -2,7 +2,7 @@
 Version=1.0
 Type=Application
 Name=Linux EPUB Reader
-Comment=Read EPUB books offline
+Comment=Read EPUBs and play offline audiobooks and music
 Exec=linux-epub-reader %f
 Icon=io.github.schmookey.LinuxEpubReader
 Terminal=false
