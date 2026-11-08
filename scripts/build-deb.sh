@@ -34,9 +34,9 @@ Priority: optional
 Architecture: all
 Depends: python3, python3-tk, python3-pil, python3-mutagen, python3-dbus-next, mpv
 Maintainer: Linux EPUB Reader contributors
-Description: Local-first dark-mode EPUB reader
- A text-oriented EPUB reader for Linux with continuous chapter scrolling,
- a left-hand table of contents, bookmarks and chapter progress.
+Description: Offline EPUB, M4B audiobook and DRM-free music player
+ A local-first EPUB reader with continuous chapter scrolling, bookmarks,
+ chapter progress, M4B audiobooks and a separate offline music library.
  .
  Adobe DRM is detected but not natively implemented in this application.
  .

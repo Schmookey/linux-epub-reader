@@ -28,7 +28,7 @@ A local-first, text-oriented EPUB reader for Linux with a modern dark interface,
 - Readium LCP-protected files are identified and explained in a notice; no external reader is launched.
 - Audiobook support is for locally stored, DRM-free M4B files. DRM-protected or unsupported audio is not decrypted or bypassed; it produces a local error notice.
 - Music accepts local files only, does not support streaming, and rejects `.m4b`, `.m4p`, `.aa`, `.aax` and network URLs. Playback of less-common audio extensions depends on the codecs bundled in the selected package; file extensions do not guarantee decodability.
-- Linux Mint desktop media controls depend on MPRIS/D-Bus availability and Cinnamon settings. Lock-screen display and the final package builds need real-desktop verification before this feature can be released.
+- Linux desktop media controls depend on MPRIS/D-Bus availability and desktop settings. Playback and lock-screen controls were verified on Linux Mint Cinnamon during Preview testing; behaviour on other desktops may vary.
 - Chapter page counts are estimates unless a publication provides page markers.
 - Automated tests are included. Please test on a real Linux Mint desktop before relying on the reader for important books.
 

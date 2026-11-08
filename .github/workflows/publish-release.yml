@@ -1,104 +1,166 @@
 name: Publish Linux EPUB Reader release
 
+# A main-branch merge adding v0.14.0 notes triggers the draft-first publisher.
+# The release remains a draft unless every installer passes verification.
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - .github/workflows/publish-release.yml
+      - 'docs/releases/v0.14.0.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix (must match APP_VERSION)
+        required: true
+        type: string
+        default: "0.14.0"
+
 permissions:
   contents: write
   actions: write
 
+concurrency:
+  group: publish-linux-epub-reader-release
+  cancel-in-progress: false
+
 jobs:
   release:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      REQUESTED_VERSION: ${{ inputs.version || '0.14.0' }}
     steps:
-      - name: Check out source
+      - name: Check out release source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Set up the pinned Python
+      - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.15.2"
 
-      - name: Verify source and run tests
-        run: |
-          python -VV
-          python -m py_compile src/linux_epub_reader.py tests/test_reader.py
-          bash -n scripts/build-deb.sh
-          python -m unittest discover -s tests -v
-
-      - name: Build and verify Debian installer
-        id: package
+      - name: Verify requested version and release notes
+        id: metadata
+        shell: bash
         run: |
           set -euo pipefail
-          APP_VERSION="$(grep -m1 '^APP_VERSION = ' src/linux_epub_reader.py | cut -d '"' -f 2)"
-          test -n "$APP_VERSION"
-          PACKAGE_VERSION="${APP_VERSION}-1"
-          PACKAGE="dist/linux-epub-reader_${PACKAGE_VERSION}_all.deb"
-
-          bash scripts/build-deb.sh
-          test -f "$PACKAGE"
-          dpkg-deb --info "$PACKAGE"
-          test "$(dpkg-deb -f "$PACKAGE" Package)" = "linux-epub-reader"
-          test "$(dpkg-deb -f "$PACKAGE" Version)" = "$PACKAGE_VERSION"
-          test "$(dpkg-deb -f "$PACKAGE" Architecture)" = "all"
-
-          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
-          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
-
-      - name: Publish GitHub release and attach Debian installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="v${{ steps.package.outputs.app_version }}"
-          TITLE="Linux EPUB Reader ${TAG}"
-
+          [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          APP_VERSION="$(sed -n 's/^APP_VERSION = "\([^"]*\)"/\1/p' src/linux_epub_reader.py | head -n 1)"
+          test "$APP_VERSION" = "$REQUESTED_VERSION"
+          TAG="v$APP_VERSION"
+          NOTES="docs/releases/$TAG.md"
+          test -s "$NOTES"
+          grep -qx "Version: ${APP_VERSION}-1" packaging/debian/control
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to overwrite it." >&2
             exit 1
           fi
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
 
-          cat > release-notes.md <<'NOTES'
-          ## Resume and full-screen fixes
-
-          This release fixes two important layout problems reported in version 0.13.9:
-          - The **Resume** button on the welcome-back panel and the toolbar's **Resume last book** action now restore the reader layout safely.
-          - Exiting full-screen no longer tries to display hidden welcome-page widgets, so the normal window title bar and minimise, maximise and close controls are restored correctly.
-
-          ### Included features
-          - Front-cover artwork on the welcome-back panel, with EPUB 2 and EPUB 3 cover detection.
-          - Book information including author, publisher, publication date, language, identifier, subjects, chapter count, extracted word count and description when supplied.
-          - Saved chapter, chapter position and estimated overall reading progress.
-          - A prominent Linux Mint-green **Resume** button.
-          - JPEG cover-image support through Pillow.
-          - Improved recovery when the last book has moved or is no longer at its saved location.
-          - Regression tests covering the reader layout restoration and full-screen exit behaviour.
-
-          ### Verification
-          - Python compilation and build-script syntax checks pass.
-          - All 45 automated unit tests pass.
-          - The Debian package metadata is checked before publication.
-
-          ### Reading data and privacy
-          The reader keeps the last-book path, reading position and bookmarks in its existing local reading-state file. Book contents and reading history are not uploaded. The application remains designed for offline use.
-
-          ### Notes
-          This is a text-oriented EPUB reader, not a browser-grade EPUB renderer. Adobe DRM and ACSM fulfilment are not supported.
-          NOTES
-
-          gh release create "$TAG" "${{ steps.package.outputs.package }}" \
-            --title "$TITLE" \
-            --notes-file release-notes.md \
-            --target "$GITHUB_SHA" \
-            --latest
-
-      - name: Build Flatpak and attach it to the published release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run tests and check source
+        shell: bash
         run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes mpv ffmpeg
+          python -VV
+          python -m py_compile src/*.py
+          bash -n scripts/build-deb.sh
+          python -m unittest discover -s tests -v
+
+      - name: Build and validate Debian installer
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build-deb.sh
+          PACKAGE="dist/linux-epub-reader_${{ steps.metadata.outputs.version }}-1_all.deb"
+          test -s "$PACKAGE"
+          test "$(dpkg-deb -f "$PACKAGE" Package)" = "linux-epub-reader"
+          test "$(dpkg-deb -f "$PACKAGE" Version)" = "${{ steps.metadata.outputs.version }}-1"
+          test "$(dpkg-deb -f "$PACKAGE" Architecture)" = "all"
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Create unpublished draft release with Debian installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.metadata.outputs.tag }}" \
+            "${{ steps.package.outputs.package }}" \
+            --title "Linux EPUB Reader ${{ steps.metadata.outputs.tag }}" \
+            --target "$GITHUB_SHA" \
+            --notes-file "${{ steps.metadata.outputs.notes }}" \
+            --draft
+
+      - name: Request pinned Stable and Preview Flatpak builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.metadata.outputs.tag }}"
           gh workflow run flatpak.yml --ref main \
-            --field source_ref=main \
-            --field release_tag="v${{ steps.package.outputs.app_version }}"
+            --field source_ref="$GITHUB_SHA" --field release_tag="$TAG"
+          gh workflow run flatpak-preview.yml --ref main \
+            --field source_ref="$GITHUB_SHA" --field release_tag="$TAG"
+
+      - name: Wait for both verified Flatpak installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.metadata.outputs.tag }}"
+          VERSION="${{ steps.metadata.outputs.version }}"
+          # The standalone Flatpak workflows run their full in-sandbox tests
+          # *before* they upload to the draft. A failed build leaves a draft,
+          # never a partial published release.
+          complete=0
+          for attempt in $(seq 1 110); do
+            names="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            if grep -Fxq "linux-epub-reader-${VERSION}.flatpak" <<< "$names" \
+                && grep -Fxq "linux-epub-reader-preview-${VERSION}.flatpak" <<< "$names" \
+                && grep -Fxq "linux-epub-reader_${VERSION}-1_all.deb" <<< "$names"; then
+              complete=1
+              break
+            fi
+            echo "Checking completed release assets (attempt $attempt/110)..."
+            sleep 20
+          done
+          if [ "$complete" -ne 1 ]; then
+            echo "Both Flatpak uploads did not complete; leaving release as draft." >&2
+            exit 1
+          fi
+
+      - name: Download installers, verify and upload SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.metadata.outputs.tag }}"
+          VERSION="${{ steps.metadata.outputs.version }}"
+          mkdir -p verified
+          gh release download "$TAG" \
+            --dir verified \
+            --pattern "*.deb" --pattern "*.flatpak"
+          (
+            cd verified
+            test -s "linux-epub-reader_${VERSION}-1_all.deb"
+            test -s "linux-epub-reader-${VERSION}.flatpak"
+            test -s "linux-epub-reader-preview-${VERSION}.flatpak"
+            sha256sum \
+              "linux-epub-reader_${VERSION}-1_all.deb" \
+              "linux-epub-reader-${VERSION}.flatpak" \
+              "linux-epub-reader-preview-${VERSION}.flatpak" > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          gh release upload "$TAG" verified/SHA256SUMS
+
+      - name: Publish the verified complete release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.metadata.outputs.tag }}"
+          gh release edit "$TAG" --draft=false --latest
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,url

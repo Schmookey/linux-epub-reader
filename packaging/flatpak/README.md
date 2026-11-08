@@ -44,7 +44,7 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 flatpak install --user flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
 flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir io.github.schmookey.LinuxEpubReader.yml
 mkdir -p dist
-flatpak build-bundle repo dist/linux-epub-reader-0.13.8.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak build-bundle repo dist/linux-epub-reader-0.14.0.flatpak io.github.schmookey.LinuxEpubReader --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 ```
 
 The GitHub Actions workflows use Ubuntu 26.04 and current major versions of the GitHub Actions (checkout v7, setup-python v7 and upload-artifact v7). Automated tests cover Python 3.12.16 (the current Linux Mint/Ubuntu baseline) and Python 3.15.2. The Flatpak itself is built and smoke-tested with Python 3.15.2, Tcl/Tk 9.1.0 and Freedesktop 26.08. Tcl/Tk source tags are pinned to their upstream release commits; the Python source archive is SHA-256 verified.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0-1 — Offline Music player and Linux desktop controls
+
+- Add a separate Music mode for locally stored, DRM-free songs, albums and playlists. Supported local formats include MP3, FLAC, WAV, Ogg/Opus, M4A/AAC/ALAC and other audio formats supported by the installed MPV/FFmpeg decoder; M4B remains exclusive to the Audiobook section.
+- Display local song and album metadata (artist, album, genre, release date, track/disc number, duration and descriptive tags where provided) and embedded artwork in the Home dashboard's Last Played card alongside the existing EBook and Audiobook cards.
+- Add previous, play, pause, stop and next controls, seeking, Mint-green volume control and mute, with separately saved music history, playlists and positions.
+- Preserve active music playback when returning from Home or EBook to Music, without unnecessarily restarting or pausing the track.
+- Introduce an MPRIS2 D-Bus service for Linux desktop media keys and compatible lock screens, with per-installation Stable/Preview service names and visible connection status. Verify this on Linux Mint Cinnamon.
+- Fix bundled dbus-next 0.2.3 compatibility with Python 3.15 and add installed-Flatpak import and session-bus registration checks.
+- Grant read-only access to mounted removable media at `/media`, `/run/media` and `/mnt` in both Flatpaks, while preserving separate writable application-state directories.
+- Extend automated tests for local music, navigation, metadata, Flatpak mount permissions and MPRIS. Preserve offline-only behaviour, DRM-free requirements and the separate EPUB/M4B/Music histories.
+
+
 ## 0.13.15-1 — Home dashboard and reading modes
 
 - Resolve the Flatpak Preview state directory from its actual runtime home directory rather than a hard-coded home path; preview reading and listening history now survives relaunches.

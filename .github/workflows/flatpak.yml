@@ -30,9 +30,6 @@ on:
         description: Optional existing GitHub Release tag to attach the bundle to
         required: false
         type: string
-  release:
-    types: [published]
-
 permissions:
   contents: write
 
@@ -225,8 +222,18 @@ jobs:
           retention-days: 30
 
       - name: Attach bundle to the requested GitHub Release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
-        run: gh release upload "$RELEASE_TAG" "$BUNDLE" --clobber
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          # Never add/replace assets on an already-public release.
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          # Prevent a manual workflow input from attaching a bundle built
+          # from a different source commit to the pending release tag.
+          TARGET_SHA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .target_commitish)"
+          test -n "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          # Refuse overwrites; this upload is intentionally one-shot.
+          gh release upload "$RELEASE_TAG" "$BUNDLE"

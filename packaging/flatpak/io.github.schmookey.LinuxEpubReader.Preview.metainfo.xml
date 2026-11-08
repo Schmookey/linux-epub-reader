@@ -3,12 +3,12 @@
   <id>io.github.schmookey.LinuxEpubReader.Preview</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
-  <name>Linux EPUB Reader (Audiobook Preview)</name>
-  <summary>Preview local EPUB and M4B audiobook playback</summary>
+  <name>Linux EPUB Reader (Preview)</name>
+  <summary>Preview offline EPUB, audiobook and music features</summary>
   <description>
-    <p>Preview build for testing local M4B audiobook playback alongside the stable Linux EPUB Reader installation. Uses a separate application identity and reading-state directory.</p>
-    <p>A simple, text-oriented EPUB reader with Home, EBook and Audiobook modes. The Home dashboard displays the last-read EPUB and last-listened M4B audiobook side by side with locally embedded cover artwork, available descriptive metadata and separate Resume actions. The EBook mode includes continuous chapter scrolling, a contents panel, search, bookmarks and saved reading positions.</p>
-    <p>The M4B audiobook preview includes a cover-led player, rounded transport controls, volume and mute controls, playback speed, readable embedded chapter navigation, and a dedicated MPV-owning worker for responsive playback control.</p>
+    <p>Preview build with a separate application identity and history directory, so it can be tested beside the stable reader without sharing progress or playlists.</p>
+    <p>Home, EBook, Audiobook and Music modes show locally embedded covers, relevant metadata and independent saved positions. The text-oriented EPUB reader offers continuous scrolling, search, bookmarks and table-of-contents navigation.</p>
+    <p>The DRM-free M4B audiobook player offers chapter markers, seek, play, pause, volume and speed controls. The separate offline Music player supports local songs, albums and playlists, with metadata-led Home cards and Linux MPRIS media controls.</p>
     <p>The app uses Atkinson Hyperlegible with a dark reading surface. It works locally and does not need network access to read books.</p>
     <p>This is not a browser-grade EPUB renderer. Complex publisher layouts, illustrations, embedded media, and Adobe DRM are not supported.</p>
   </description>
@@ -17,5 +17,5 @@
   <url type="bugtracker">https://github.com/Schmookey/linux-epub-reader/issues</url>
   <developer_name>Linux EPUB Reader contributors</developer_name>
   <provides><mediatype>application/epub+zip</mediatype></provides>
-  <releases><release version="0.13.15" date="2026-11-02"/><release version="0.13.14" date="2026-11-01"/><release version="0.13.13" date="2026-11-01"/><release version="0.13.12" date="2026-11-01"/><release version="0.13.11" date="2026-11-01"/><release version="0.13.10" date="2026-10-31"/><release version="0.13.9" date="2026-10-31"/><release version="0.13.8" date="2026-10-30"/><release version="0.13.7" date="2026-10-27"/></releases>
+  <releases><release version="0.14.0" date="2026-11-08"/><release version="0.13.15" date="2026-11-02"/><release version="0.13.14" date="2026-11-01"/><release version="0.13.13" date="2026-11-01"/><release version="0.13.12" date="2026-11-01"/><release version="0.13.11" date="2026-11-01"/><release version="0.13.10" date="2026-10-31"/><release version="0.13.9" date="2026-10-31"/><release version="0.13.8" date="2026-10-30"/><release version="0.13.7" date="2026-10-27"/></releases>
 </component>
