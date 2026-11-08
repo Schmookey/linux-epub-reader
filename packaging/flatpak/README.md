@@ -23,7 +23,17 @@ The bundle contains the app, CPython 3.15.2 with Tkinter, Tcl/Tk 9.1.0, and Pill
 
 The manifest does not grant network access. It uses X11 for its Tk window and read-only home access so the existing Tk file chooser can open EPUB files. Reading state stays in `~/.local/share/linux-epub-reader/`; write access is limited to that directory. The home directory is not writable through the broad home permission.
 
-The current Tk file chooser is not portal-based, so opening files outside the home directory may be restricted by the sandbox.
+The Tkinter file chooser is not portal-based. The Flatpak therefore exposes **read-only** local removable-media mount roots `/media`, `/run/media` and `/mnt` so you can browse external USB drives, portable SSDs and manually mounted local volumes when they have already been mounted by Linux. The application cannot modify media on those drives; its own reading/listening/music state remains writable only in its designated data directory. The sandbox has no network access, and no blanket `--filesystem=host` permission is granted.
+
+For Linux Mint, mounted USB drives are commonly under `/media/<your-login>/<drive-label>/`. In Music, choose **Open album/folder…** and browse to that location; EPUB and M4B file choosers can use the same mounted drives. Drives must be mounted by the operating system first. A drive that is not mounted, a network share, and GVfs/MTP-only devices may need a different integration: granting local mount paths does not automatically make those available.
+
+If an older Preview Flatpak is installed and you want to test the access before installing an updated bundle, close Preview and run:
+
+```bash
+flatpak override --user --filesystem=/media:ro --filesystem=/run/media:ro --filesystem=/mnt:ro io.github.schmookey.LinuxEpubReader.Preview
+```
+
+Restart Preview afterwards. These overrides are retained between Flatpak updates. To see the effective permissions, run `flatpak info --user --show-permissions io.github.schmookey.LinuxEpubReader.Preview`. To revert **only** the three read-only mounts manually, use `flatpak override --user --nofilesystem=/media --nofilesystem=/run/media --nofilesystem=/mnt io.github.schmookey.LinuxEpubReader.Preview` (note that manifest-provided permissions will still apply when using an updated package).
 
 ## Build locally
 

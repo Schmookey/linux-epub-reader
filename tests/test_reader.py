@@ -575,10 +575,33 @@ class ReaderLayoutRegressionTests(unittest.TestCase):
         self.assertIn('self.audio_path == path and resume', method)
 
     def test_audiobook_mode_hides_contents_sidebar(self):
-        method = self._method_source("_set_app_mode", "_pause_audio_for_navigation")
-        audiobook_branch = method[method.index('elif mode == "audiobook":'):]
-        self.assertIn("self.left.grid_remove()", audiobook_branch)
-        self.assertIn("self.right.grid(row=0, column=0, columnspan=2", audiobook_branch)
+        # Exercise the mode-switching behaviour rather than depending on the
+        # exact spelling of its conditional branches.
+        window = mock.Mock()
+        window.toolbar.winfo_manager.return_value = "pack"
+        reader.Reader._set_app_mode(window, "audiobook")
+
+        window.left.grid_remove.assert_called_once_with()
+        window.sidebar_reopen_toggle.place_forget.assert_called_once_with()
+        window.right.grid.assert_called_once_with(
+            row=0, column=0, columnspan=2, sticky="nsew"
+        )
+        window.audiobook_toolbar.pack.assert_called_once_with(fill=reader.tk.X)
+        window.music_toolbar.pack.assert_not_called()
+        window.ebook_toolbar.pack.assert_not_called()
+
+    def test_music_mode_hides_epub_contents_sidebar(self):
+        window = mock.Mock()
+        window.toolbar.winfo_manager.return_value = "pack"
+        reader.Reader._set_app_mode(window, "music")
+
+        window.left.grid_remove.assert_called_once_with()
+        window.right.grid.assert_called_once_with(
+            row=0, column=0, columnspan=2, sticky="nsew"
+        )
+        window.music_toolbar.pack.assert_called_once_with(fill=reader.tk.X)
+        window.audiobook_toolbar.pack.assert_not_called()
+        window.ebook_toolbar.pack.assert_not_called()
 
     def test_audiobook_chapters_are_drawn_on_clickable_timeline(self):
         build = self._method_source("_build_audiobook_screen", "_make_round_audio_button")

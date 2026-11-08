@@ -105,9 +105,64 @@ jobs:
       - name: Install the bundle and verify Python, Tcl and Tk in the sandbox
         run: |
           flatpak install --user --noninteractive "$BUNDLE"
+          # Tk's native chooser needs explicitly shared mount locations. Check
+          # that music/EPUB/M4B can be read from them, but never written there.
+          for root in /media /run/media /mnt; do
+            sudo install -d -m 755 "$root/linux-epub-reader-ci"
+            printf 'external media fixture\n' | sudo tee "$root/linux-epub-reader-ci/readable.txt" >/dev/null
+            sudo chmod 666 "$root/linux-epub-reader-ci/readable.txt"
+          done
+          flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
+          from pathlib import Path
+          for root in ('/media', '/run/media', '/mnt'):
+              item = Path(root) / 'linux-epub-reader-ci' / 'readable.txt'
+              assert item.read_text(encoding='utf-8') == 'external media fixture\n', root
+              try:
+                  item.write_text('unexpected write', encoding='utf-8')
+              except OSError:
+                  pass
+              else:
+                  raise AssertionError('External media should be read-only: ' + root)
+          print('Flatpak mounted-media read access and write isolation passed')
+          PY
+          for root in /media /run/media /mnt; do
+            sudo rm -rf "$root/linux-epub-reader-ci"
+          done
           dbus-run-session -- xvfb-run -a flatpak run --user --command=python3.15 "$APP_ID" -c 'import sys, tkinter, _tkinter; assert sys.version_info[:3] == (3, 15, 2), sys.version; root = tkinter.Tk(); root.withdraw(); tcl = root.tk.call("info", "patchlevel"); tk = root.tk.call("package", "require", "Tk"); print("Python:", sys.version.split()[0]); print("Tcl:", tcl); print("Tk:", tk); assert tcl == "9.1.0", tcl; assert tk == "9.1.0", tk; root.update_idletasks(); root.destroy(); print("Tkinter GUI startup passed")'
           flatpak run --user --command=python3.15 "$APP_ID" -c 'from pathlib import Path; p = Path.home() / ".local/share/linux-epub-reader"; p.mkdir(parents=True, exist_ok=True); marker = p / ".flatpak-write-test"; marker.write_text("ok", encoding="utf-8"); marker.unlink(); print("Reading-state directory write passed")'
           flatpak run --user --command=python3.15 "$APP_ID" -c 'from PIL import Image; import io; image = Image.new("RGB", (4, 6), "green"); stream = io.BytesIO(); image.save(stream, format="JPEG"); stream.seek(0); decoded = Image.open(stream); decoded.load(); assert decoded.size == (4, 6); print("Pillow JPEG cover decoding passed")'
+          # These checks run in the *installed* Flatpak, not the host Python.
+          # Import every dbus-next API used by the MPRIS bridge, plus Mutagen.
+          flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
+          import dbus_next
+          import mutagen
+          from dbus_next import BusType, PropertyAccess, RequestNameReply, Variant
+          from dbus_next.aio import MessageBus
+          from dbus_next.service import ServiceInterface, method, dbus_property
+          print('dbus-next loaded from:', dbus_next.__file__)
+          print('Mutagen loaded from:', mutagen.__file__)
+          assert '/app/lib/python3.15/site-packages/' in dbus_next.__file__
+          assert '/app/lib/python3.15/site-packages/' in mutagen.__file__
+          PY
+          # The actual MPRIS service must acquire its app-scoped name on a
+          # local D-Bus session through the Flatpak proxy, not just import.
+          dbus-run-session -- flatpak run --user --command=python3.15 "$APP_ID" - <<'PY'
+          import os
+          import sys
+          import time
+          sys.path.insert(0, '/app/lib/linux-epub-reader')
+          from mpris_service import MPRISBridge
+          bridge = MPRISBridge('/tmp', preview=os.environ.get('FLATPAK_ID', '').endswith('.Preview'))
+          bridge.start()
+          try:
+              deadline = time.monotonic() + 10.0
+              while not bridge.available and not bridge.error and time.monotonic() < deadline:
+                  time.sleep(0.05)
+              assert bridge.available, bridge.error or 'MPRIS service did not register'
+              print('MPRIS session-bus registration passed:', bridge._name)
+          finally:
+              bridge.close()
+          PY
           flatpak run --user --command=mpv "$APP_ID" --version
           mkdir -p "$HOME/.local/share/linux-epub-reader"
           pulseaudio --start --exit-idle-time=-1 --load=module-null-sink --log-target=stderr

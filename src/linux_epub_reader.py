@@ -14,6 +14,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import xml.etree.ElementTree as ET
+from music_ui import MusicMixin
 from html.parser import HTMLParser
 
 try:
@@ -822,7 +823,7 @@ class EPUBBook:
         return max(1, int((chars / (chars_per_line * lines_per_page)) + 0.999))
 
 
-class Reader(tk.Tk):
+class Reader(MusicMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}")
@@ -862,6 +863,7 @@ class Reader(tk.Tk):
         self._state_recovery_message = ""
         self._state_save_warning_shown = False
         self.state = self._load_state()
+        self._music_init(STATE_DIR)
         self.hide_fullscreen_hint_var = tk.BooleanVar(
             value=bool(self.state.get("hide_fullscreen_hint", False))
         )
@@ -1152,6 +1154,7 @@ class Reader(tk.Tk):
         self.welcome_view = tk.Frame(self.reader_body, bg=APP_BG, bd=0, highlightthickness=0)
         self.audio_screen = tk.Frame(self.reader_body, bg=APP_BG, bd=0, highlightthickness=0)
         self._build_audiobook_screen()
+        self._music_build_ui()
         self.text.tag_configure("search_hit", background="#5A4A12", foreground="#FFFFFF")
         self.text.tag_configure("chapter_heading", foreground=DEFAULT_FG, font=("Sans", 15, "bold"),
                                 spacing1=12, spacing3=10)
@@ -1826,6 +1829,8 @@ class Reader(tk.Tk):
             if value not in (None, "")
         })
         self.audio_metadata = metadata
+        self._mpris_active_kind = 'audiobook'
+        self.audio_cover_uri = self._mpris.store_art(cover_bytes, path)
         self.audio_title = str(metadata.get("title") or self.audio_title)
         record["title"] = self.audio_title
         self.state["last_opened_audiobook_title"] = self.audio_title
@@ -2063,6 +2068,9 @@ class Reader(tk.Tk):
         self.audio_worker.submit("chapter", self._audio_load_token, index)
 
     def _audio_play(self):
+        self._mpris_active_kind = 'audiobook'
+        if self.music_path:
+            self._music_pause()
         if not self.audio_backend or not self.audio_path:
             self.open_audiobook_dialog()
             return
@@ -2144,6 +2152,7 @@ class Reader(tk.Tk):
                 )
                 self._highlight_audio_chapter(chapter_index)
             self._save_audio_position(status)
+            self._music_publish_mpris('audiobook', status)
         except (AudiobookError, OSError, TypeError, ValueError):
             pass
         self.audio_tick_id = None
@@ -2242,7 +2251,7 @@ class Reader(tk.Tk):
 
     def _set_app_mode(self, mode):
         """Switch the global mode, contextual toolbar and contents layout."""
-        if mode not in ("home", "ebook", "audiobook"):
+        if mode not in ("home", "ebook", "audiobook", "music"):
             return
         self.current_mode = mode
         if mode == "home":
@@ -2251,7 +2260,7 @@ class Reader(tk.Tk):
             self.left.grid_remove()
             self.panes.grid_columnconfigure(0, weight=0, minsize=0)
             self.right.grid(row=0, column=0, columnspan=2, sticky="nsew")
-        elif mode == "audiobook":
+        elif mode in ("audiobook", "music"):
             self.left.grid_remove()
             self.sidebar_reopen_toggle.place_forget()
             self.panes.grid_columnconfigure(0, weight=0, minsize=0)
@@ -2260,7 +2269,8 @@ class Reader(tk.Tk):
                 self.toolbar.pack(fill=tk.X, after=self.modebar)
             self.ebook_toolbar.pack_forget()
             self.audiobook_toolbar.pack_forget()
-            self.audiobook_toolbar.pack(fill=tk.X)
+            self.music_toolbar.pack_forget()
+            (self.music_toolbar if mode == "music" else self.audiobook_toolbar).pack(fill=tk.X)
         else:
             self.left.grid()
             self.panes.grid_columnconfigure(0, weight=0, minsize=self.sidebar_target_width)
@@ -2269,6 +2279,7 @@ class Reader(tk.Tk):
                 self.toolbar.pack(fill=tk.X, after=self.modebar)
             self.ebook_toolbar.pack_forget()
             self.audiobook_toolbar.pack_forget()
+            self.music_toolbar.pack_forget()
             if mode == "ebook":
                 self.ebook_toolbar.pack(fill=tk.X)
             else:
@@ -2279,20 +2290,11 @@ class Reader(tk.Tk):
         self.home_mode_button.configure(style=active_style if mode == "home" else normal_style)
         self.ebook_mode_button.configure(style=active_style if mode == "ebook" else normal_style)
         self.audiobook_mode_button.configure(style=active_style if mode == "audiobook" else normal_style)
+        self.music_mode_button.configure(style=active_style if mode == "music" else normal_style)
 
     def _pause_audio_for_navigation(self):
-        """Save and pause an active audiobook when leaving its focused screen."""
-        if self.audio_is_active:
-            self._save_audio_position(self._last_audio_status)
-            if self.audio_worker:
-                self.audio_worker.submit("pause", self._audio_load_token)
-            self.audio_is_active = False
-        if self.audio_tick_id:
-            try:
-                self.after_cancel(self.audio_tick_id)
-            except tk.TclError:
-                pass
-            self.audio_tick_id = None
+        """Leaving the player screen does not stop audio; Music explicitly pauses M4B."""
+        return
 
     def show_home_screen(self):
         """Show the paired last-read and last-listened dashboard."""
@@ -2301,6 +2303,7 @@ class Reader(tk.Tk):
         self.heading.pack_forget()
         self.text_frame.pack_forget()
         self.audio_screen.pack_forget()
+        self.music_screen.pack_forget()
         self._show_home_dashboard()
         self.status.configure(text="Welcome to Linux EPUB Reader.")
         self.progress.configure(value=0)
@@ -2311,6 +2314,7 @@ class Reader(tk.Tk):
         self._pause_audio_for_navigation()
         self._set_app_mode("ebook")
         self.audio_screen.pack_forget()
+        self.music_screen.pack_forget()
         self.welcome_view.pack_forget()
         if self.book is not None:
             self._restore_reader_content_layout()
@@ -2322,6 +2326,11 @@ class Reader(tk.Tk):
 
     def show_audiobook_mode(self):
         """Show the audiobook controls and contents without starting playback."""
+        if getattr(self, "music_path", None):
+            self._music_pause()
+        if self.audio_path:
+            self._mpris_active_kind = 'audiobook'
+        self.music_screen.pack_forget()
         if self.current_mode != "audiobook":
             self._pause_audio_for_navigation()
         self._set_app_mode("audiobook")
@@ -2354,7 +2363,8 @@ class Reader(tk.Tk):
         self._show_welcome_panel(path, title, inferred, preview)
 
     def _show_home_dashboard(self):
-        """Render independent last-read and last-listened cards side by side."""
+        """Render independent EPUB, M4B and music resume cards."""
+        self.music_screen.pack_forget()
         self.heading.pack_forget()
         self.text_frame.pack_forget()
         self.audio_screen.pack_forget()
@@ -2378,7 +2388,8 @@ class Reader(tk.Tk):
         audio_item = last_opened_audiobook_info(self.state)
         has_book = bool(book_path)
         has_audio = bool(audio_item)
-        if not has_book and not has_audio:
+        has_music = bool(self.music_state.get("last_path"))
+        if not has_book and not has_audio and not has_music:
             welcome = tk.Frame(
                 self.welcome_view, bg=PANEL_BG, highlightthickness=1,
                 highlightbackground=BORDER, bd=0,
@@ -2395,6 +2406,7 @@ class Reader(tk.Tk):
         cards.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 10))
         cards.grid_columnconfigure(0, weight=1, uniform="resume")
         cards.grid_columnconfigure(1, weight=1, uniform="resume")
+        cards.grid_columnconfigure(2, weight=1, uniform="resume")
         cards.grid_rowconfigure(0, weight=1)
         self._build_home_resume_card(
             cards, "ebook", book_path, book_title, column=0
@@ -2405,6 +2417,7 @@ class Reader(tk.Tk):
             audio_item["title"] if audio_item else "",
             column=1,
         )
+        self._build_music_home_card(cards, column=2)
 
     def _build_home_resume_card(self, parent, media_type, path, title, column):
         """Build one dashboard card from local publication metadata."""
@@ -2425,7 +2438,7 @@ class Reader(tk.Tk):
         body.pack(fill=tk.BOTH, expand=True, padx=14)
         cover_box = tk.Frame(
             body, bg=APP_BG, highlightthickness=1, highlightbackground=BORDER,
-            width=112, height=160,
+            width=100, height=140,
         )
         cover_box.pack(side=tk.LEFT, anchor="n", padx=(0, 14))
         cover_box.pack_propagate(False)
@@ -2451,7 +2464,7 @@ class Reader(tk.Tk):
             except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
                 error = str(exc)
 
-        photo = self._create_cover_photo(cover_bytes, (108, 156)) if cover_bytes else None
+        photo = self._create_cover_photo(cover_bytes, (94, 134)) if cover_bytes else None
         if photo is not None:
             self._home_cover_photos.append(photo)
             tk.Label(cover_box, image=photo, bg=APP_BG, bd=0).pack(expand=True)
@@ -2465,7 +2478,7 @@ class Reader(tk.Tk):
         tk.Label(
             details, text=title or (os.path.basename(path) if path else "No book yet"),
             bg=PANEL_BG, fg=DEFAULT_FG, font=(FONT_NAME, 13, "bold"),
-            justify=tk.LEFT, anchor="w", wraplength=270,
+            justify=tk.LEFT, anchor="w", wraplength=185,
         ).pack(fill=tk.X, anchor="w")
         if not path:
             description = "Open an EPUB to start your reading history." if not is_audio else (
@@ -2474,20 +2487,20 @@ class Reader(tk.Tk):
             tk.Label(
                 details, text=description, bg=PANEL_BG, fg=MUTED_TEXT,
                 font=(FONT_NAME, 9), justify=tk.LEFT, anchor="nw",
-                wraplength=270,
+                wraplength=185,
             ).pack(fill=tk.X, pady=(8, 0))
         elif not available:
             tk.Label(
                 details,
                 text="This file is not at its saved location. Use Locate to choose it again; your saved position will be retained.",
                 bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 9),
-                justify=tk.LEFT, anchor="w", wraplength=270,
+                justify=tk.LEFT, anchor="w", wraplength=185,
             ).pack(fill=tk.X, pady=(7, 0))
         elif error:
             tk.Label(
                 details, text=f"File metadata could not be read: {error}",
                 bg=PANEL_BG, fg=MUTED_TEXT, font=(FONT_NAME, 9),
-                justify=tk.LEFT, anchor="w", wraplength=270,
+                justify=tk.LEFT, anchor="w", wraplength=185,
             ).pack(fill=tk.X, pady=(7, 0))
         else:
             if is_audio:
@@ -2522,13 +2535,13 @@ class Reader(tk.Tk):
             tk.Label(
                 details, text=author, bg=PANEL_BG, fg=MUTED_TEXT,
                 font=(FONT_NAME, 9), justify=tk.LEFT, anchor="w",
-                wraplength=270,
+                wraplength=185,
             ).pack(fill=tk.X, pady=(4, 2))
             if extra:
                 tk.Label(
                     details, text=extra, bg=PANEL_BG, fg=MUTED_TEXT,
                     font=("Sans", 8), justify=tk.LEFT, anchor="w",
-                    wraplength=270,
+                    wraplength=185,
                 ).pack(fill=tk.X, pady=(0, 5))
             desc = tk.Text(
                 details, height=5, wrap=tk.WORD, font=(FONT_NAME, 9),
@@ -2542,7 +2555,7 @@ class Reader(tk.Tk):
             tk.Label(
                 details, text=progress_text, bg=PANEL_BG, fg=MINT_GREEN,
                 font=("Sans", 8, "bold"), justify=tk.LEFT, anchor="w",
-                wraplength=270,
+                wraplength=185,
             ).pack(fill=tk.X, pady=(0, 4))
 
         actions = tk.Frame(card, bg=PANEL_BG)
@@ -3279,6 +3292,7 @@ class Reader(tk.Tk):
         ttk.Button(buttons, text="Delete selected", command=remove_mark).pack(side=tk.LEFT, padx=6)
 
     def on_close(self):
+        self._music_close()
         self._audio_close_requested = True
         if self.book:
             self._update_progress()
