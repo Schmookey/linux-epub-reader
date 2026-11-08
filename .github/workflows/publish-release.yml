@@ -1,8 +1,12 @@
 name: Publish Linux EPUB Reader release
 
-# Publishing is explicit: merging a release-preparation PR never publishes
-# an unverified installer or an out-of-date release description.
+# A main-branch merge adding v0.14.0 notes triggers the draft-first publisher.
+# The release remains a draft unless every installer passes verification.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/releases/v0.14.0.md'
   workflow_dispatch:
     inputs:
       version:
@@ -27,7 +31,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      REQUESTED_VERSION: ${{ inputs.version }}
+      REQUESTED_VERSION: ${{ inputs.version || '0.14.0' }}
     steps:
       - name: Check out release source
         uses: actions/checkout@v7
